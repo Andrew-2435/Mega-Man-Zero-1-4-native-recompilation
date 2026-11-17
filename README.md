@@ -157,6 +157,12 @@ Each game uses a discovery-based approach for static recompilation:
 
 ---
 
+## 🙏 Credits
+
+- **mstan** — Creator of [`gbarecomp`](https://github.com/mstan/gbarecomp), [`recomp-ui`](https://github.com/mstan/recomp-ui), and the original Mega Man Zero recompilation project. This project builds upon his work and tools.
+- **Capcom** — Mega Man Zero series.
+- **SDL2** — Simple DirectMedia Layer (zlib license).
+
 ## 📄 License
 
 This project is for educational/research purposes. Mega Man Zero is a trademark of Capcom. ROMs and BIOS are not included and must be obtained legally. Code in `gbarecomp` and `recomp-ui` is subject to their respective licenses.
