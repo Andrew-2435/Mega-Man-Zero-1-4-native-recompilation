@@ -26,7 +26,7 @@ Each game is individually recompiled from its GBA ROM into a standalone Windows 
 - **In-launcher game switching** via `Juegos` button in recomp-ui Dashboard
 - **Configurable controls** (keyboard + gamepad) saved per-game via `keybinds.ini`
 - **Settings**: video (raw/CRT), audio, display, fullscreen, widescreen
-- **Mod support** via `.gbamod` packages
+- **Mod support** via `.gbamod` packages (Adaptive Widescreen enabled by default for all 4 games)
 - **Discovery-based bring-up** workflow for static recompilation corpus
 - **Per-game box art** and assets
 

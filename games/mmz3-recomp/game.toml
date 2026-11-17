@@ -262,3 +262,8 @@ note = "proposed from self-heal miss-log; bridged x5027"
 addr = 0x030016BC
 mode = "arm"
 note = "proposed from self-heal miss-log; bridged x3992"
+
+[[extra_func]]
+addr = 0x00000018
+mode = "arm"
+note = "BIOS Undefined Instruction handler; miss during main menu"
