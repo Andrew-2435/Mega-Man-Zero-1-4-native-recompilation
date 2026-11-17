@@ -1,0 +1,278 @@
+<#
+Build the MegaManZeroRecomp Windows x64 release archive.
+
+The archive contains the stripped executable, its MinGW/SDL runtime DLLs, the
+toolchain-less overlay compiler used for uncovered paths, and a short player
+README. It never contains a ROM, GBA BIOS, save data, generated source, or
+developer configuration.
+
+Usage:
+  powershell -File tools\make_release.ps1 -Version 0.0.2
+#>
+param(
+    [Parameter(Mandatory = $true)][string]$Version,
+    [string]$BuildDir = 'build-release',
+    # Empty => the in-repo gbarecomp submodule (resolved in the body, where
+    # $PSScriptRoot is reliably populated — it can be empty in a param
+    # default under some invocation shells, e.g. powershell -File).
+    [string]$GbarecompRoot = '',
+    [string]$RecompUiRoot = '',
+    [string]$GeneratedBiosDir = '',
+    [ValidateRange(1, 32)][int]$Jobs = 4
+)
+
+$ErrorActionPreference = 'Stop'
+
+if ($Version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
+    throw "Version must look like 0.0.2 (received '$Version')."
+}
+
+$mingwBin = 'C:\msys64\mingw64\bin'
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$root = (Resolve-Path (Join-Path $scriptDir '..')).Path
+if (-not $GbarecompRoot) { $GbarecompRoot = Join-Path $root 'gbarecomp' }
+$engine = (Resolve-Path $GbarecompRoot).Path
+if (-not $RecompUiRoot) { $RecompUiRoot = Join-Path $root 'recomp-ui' }
+$ui = (Resolve-Path -LiteralPath $RecompUiRoot).Path
+if (-not $GeneratedBiosDir) { $GeneratedBiosDir = Join-Path $engine 'src\runtime\generated_bios' }
+$generatedBiosPath = (Resolve-Path -LiteralPath $GeneratedBiosDir).Path
+$build = Join-Path $root $BuildDir
+$out = Join-Path $root 'release-stage'
+$target = 'MegaManZeroRecomp'
+$stageName = "$target-windows-x64-v$Version"
+$stage = Join-Path $out $stageName
+$zip = Join-Path $out "$stageName.zip"
+$expectedSha1 = '193b14120119162518a73c70876f0b8bffdbd96e'
+$dlls = @('SDL2.dll', 'libgcc_s_seh-1.dll', 'libstdc++-6.dll', 'libwinpthread-1.dll')
+
+foreach ($required in @(
+    (Join-Path $mingwBin 'cc.exe'),
+    (Join-Path $mingwBin 'c++.exe'),
+    (Join-Path $mingwBin 'ninja.exe'),
+    (Join-Path $mingwBin 'strip.exe'),
+    (Join-Path $engine 'CMakeLists.txt'),
+    (Join-Path $engine 'tools\fetch_tcc.ps1'),
+    (Join-Path $generatedBiosPath 'bios_recompiled.cpp'),
+    (Join-Path $generatedBiosPath 'bios_recompiled.h')
+)) {
+    if (-not (Test-Path -LiteralPath $required)) {
+        throw "Required release dependency is missing: $required"
+    }
+}
+
+$generated = @(Get-ChildItem -LiteralPath (Join-Path $root 'generated') `
+    -Filter 'recompiled_*.cpp' -File -ErrorAction SilentlyContinue)
+if ($generated.Count -eq 0) {
+    throw 'Generated guest shards are missing. Supply the verified ROM and run tools\regen.ps1 first.'
+}
+
+$env:PATH = "$mingwBin;$env:PATH"
+New-Item -ItemType Directory -Force -Path $out | Out-Null
+
+& "$mingwBin\cmake.exe" -S $root -B $build -G Ninja `
+    -DCMAKE_C_COMPILER="$mingwBin/gcc.exe" `
+    -DCMAKE_CXX_COMPILER="$mingwBin/g++.exe" `
+    -DCMAKE_MAKE_PROGRAM="$mingwBin/ninja.exe" `
+    -DCMAKE_BUILD_TYPE=Release `
+    "-DCMAKE_CXX_FLAGS_RELEASE=-O3 -DNDEBUG" `
+    -DGBARECOMP_ROOT="$engine" `
+    "-DGBARECOMP_GENERATED_BIOS_DIR=$generatedBiosPath" `
+    "-DRECOMP_UI_ROOT=$ui" `
+    "-DGBARECOMP_RUNTIME_UI_ROOT=$ui" `
+    -DGBARECOMP_BUILD_ORACLE=OFF `
+    -DGBARECOMP_MINGW_PREFIX_UNIX='/c/msys64/mingw64' `
+    -DSDL2_INCLUDE_DIR='C:/msys64/mingw64/include/SDL2' `
+    -DSDL2_LIBRARY='C:/msys64/mingw64/lib/libSDL2.dll.a'
+if ($LASTEXITCODE -ne 0) { throw "Release configure failed ($LASTEXITCODE)." }
+
+& "$mingwBin\cmake.exe" --build $build --target $target --parallel $Jobs
+if ($LASTEXITCODE -ne 0) { throw "Release build failed ($LASTEXITCODE)." }
+
+$exe = Join-Path $build "$target.exe"
+if (-not (Test-Path -LiteralPath $exe)) { throw "Expected executable is missing: $exe" }
+& (Join-Path $mingwBin 'strip.exe') $exe
+if ($LASTEXITCODE -ne 0) { throw "strip failed ($LASTEXITCODE)." }
+$binaryVersion = (& $exe --version).Trim()
+if ($LASTEXITCODE -ne 0 -or $binaryVersion -ne "$target v$Version") {
+    throw "Executable version does not match archive: '$binaryVersion' versus v$Version"
+}
+
+if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
+New-Item -ItemType Directory -Force -Path $stage | Out-Null
+Copy-Item -LiteralPath $exe -Destination $stage
+Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination $stage
+Copy-Item -LiteralPath (Join-Path $root 'PERMISSIONS.md') -Destination $stage
+# Ship only the authored runtime presentation default, not the development
+# recompiler configuration or its paths/function metadata.
+$sourceToml = [IO.File]::ReadAllText((Join-Path $root 'game.toml'))
+$video = [regex]::Match($sourceToml, '(?ms)^\[video\]\s*\r?\n(.*?)(?=^\[|\z)')
+$screen = [regex]::Match($video.Groups[1].Value,
+    '(?m)^\s*screen\s*=\s*"([A-Za-z0-9_-]+)"\s*(?:#.*)?$')
+if (-not $video.Success -or -not $screen.Success) {
+    throw 'Cannot resolve the authored video.screen for release packaging.'
+}
+$runtimeConfig = "[video]`nscreen = `"$($screen.Groups[1].Value)`"`n"
+[IO.File]::WriteAllText((Join-Path $stage 'game.toml'), $runtimeConfig)
+$fontNotices = @('LatoLatin-OFL.txt', 'NotoSansSymbols2-OFL.txt', 'OpenMoji-LICENSE.txt')
+$fontNoticeStage = Join-Path $stage 'licenses/fonts'
+New-Item -ItemType Directory -Force -Path $fontNoticeStage | Out-Null
+foreach ($notice in $fontNotices) {
+    Copy-Item -LiteralPath (Join-Path $root "tools/release-licenses/$notice") -Destination $fontNoticeStage
+}
+& (Get-Command python.exe).Source (Join-Path $root 'tools\collect_licenses.py') `
+    $engine $ui (Join-Path $stage 'licenses') --mingw (Split-Path $mingwBin)
+if ($LASTEXITCODE -ne 0) { throw 'Dependency notice staging failed.' }
+foreach ($dll in $dlls) {
+    $source = Join-Path $mingwBin $dll
+    if (-not (Test-Path -LiteralPath $source)) { throw "Runtime DLL is missing: $source" }
+    Copy-Item -LiteralPath $source -Destination $stage
+}
+
+# recomp-ui launcher assets (fonts + img TGAs incl. this game's box art),
+# staged next to the exe by recomp_target_launcher_ui's POST_BUILD. The
+# launcher loads them from <exe>\assets\ at runtime.
+$assets = Join-Path $build 'assets'
+if (-not (Test-Path -LiteralPath (Join-Path $assets 'img'))) {
+    throw "recomp-ui launcher assets missing: $assets (build with GBAGAME_RECOMP_UI=ON)"
+}
+Copy-Item -LiteralPath $assets -Destination $stage -Recurse
+
+# Game-owned mod catalog (Adaptive Widescreen enabled for fresh installs,
+# package), staged next to the exe by the POST_BUILD copy. The launcher seam
+# resolves the catalog at <exe>\mods\, so without this the shipped build has
+# an empty Mods page. Data only -- no ROM-derived content.
+$mods = Join-Path $build 'mods'
+if (-not (Test-Path -LiteralPath (Join-Path $mods 'packages'))) {
+    throw "Mod catalog missing: $mods (build with GBARECOMP_ENABLE_MODS=ON)"
+}
+Copy-Item -LiteralPath $mods -Destination $stage -Recurse
+
+& (Join-Path $engine 'tools\fetch_tcc.ps1') `
+    -Toolchain (Join-Path $stage 'overlay_toolchain') -EngineRoot $engine -CacheDir (Join-Path $build 'release-toolchain-cache')
+if ($LASTEXITCODE -ne 0) { throw "Overlay toolchain staging failed ($LASTEXITCODE)." }
+
+@"
+# Mega Man Zero - GBA static recompilation (Windows x64)
+
+This is a playable, static-first v$Version build. It executes the real GBA BIOS
+through the LLE path by default. If play reaches a target outside the reviewed
+static corpus, the runtime bridges that target through its instruction
+interpreter, compiles it to native code, and caches it for later launches.
+
+## How to run
+
+1. Keep this entire extracted folder together.
+2. Run MegaManZeroRecomp.exe.
+3. Select your legally obtained Mega Man Zero (USA) ROM when prompted.
+   Expected SHA-1: $expectedSha1
+4. Select your legally obtained gba_bios.bin when prompted.
+
+The selected paths are cached next to the executable. SRAM saves, save states,
+and the native coverage cache are also stored locally. The ROM and BIOS are not
+included in this archive.
+
+Keep ``game.toml`` beside the executable. It carries the authored presentation
+default without development configuration or player settings.
+
+Keyboard: arrows = D-pad, Z = A, X = B, A = L, S = R, Enter = Start,
+Right Shift = Select, Tab = fast-forward. Shift+F1-F9 saves a state; F1-F9
+loads one.
+
+## Optional widescreen
+
+Adaptive Widescreen with Fit to screen is enabled in a fresh extraction.
+Resize the game window to reveal additional scenery. Existing saved mod
+choices are preserved. Open Mods to disable it for native 240x160 or select
+a fixed wider view.
+
+Known v$Version limitation: loading a save state in widescreen can temporarily
+desynchronize the extended presentation. Dying and choosing Retry, or another
+normal room reload, rebuilds it. SRAM saves and 240x160 mode are unaffected.
+
+Project: https://github.com/mstan/MegaManZeroRecomp
+Engine: https://github.com/mstan/gbarecomp
+"@ | Out-File -LiteralPath (Join-Path $stage 'README.md') -Encoding utf8
+
+$forbidden = Get-ChildItem -LiteralPath $stage -Recurse -File | Where-Object {
+    $_.Extension -in @('.gba', '.sav', '.srm') -or
+    $_.Name -ieq 'gba_bios.bin' -or
+    $_.Name -in @('rom.cfg', 'bios.cfg', 'config.ini', 'input.ini')
+}
+if ($forbidden) {
+    throw "Forbidden release content detected: $($forbidden.FullName -join ', ')"
+}
+
+if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
+Add-Type -AssemblyName System.IO.Compression
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+# ZIP entry names must always use '/', regardless of the host OS.
+# Compress-Archive preserves Windows backslashes, which POSIX extractors treat
+# as literal filename characters rather than directory separators -- so a
+# Linux / Steam Deck / Proton user gets files literally named
+# "assets\fonts\LatoLatin-Regular.ttf" and "mods\packages\...", the nested
+# trees are never created, and the ImGui launcher finds neither its fonts nor
+# its mod catalog. Write portably here, then verify below.
+# (Convention ported from snesrecomp/SuperMarioWorldRecomp.)
+$stageFull = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $stage).Path)
+$zipFull = [IO.Path]::GetFullPath($zip)
+$stagePrefix = $stageFull.TrimEnd('\') + '\'
+$files = @(Get-ChildItem -LiteralPath $stage -File -Recurse | Sort-Object FullName)
+$archive = [IO.Compression.ZipFile]::Open(
+    $zipFull, [IO.Compression.ZipArchiveMode]::Create)
+try {
+    foreach ($file in $files) {
+        $fileFull = [IO.Path]::GetFullPath($file.FullName)
+        if (-not $fileFull.StartsWith(
+                $stagePrefix, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing to archive a file outside the release stage: $fileFull"
+        }
+        $entryName = $fileFull.Substring($stagePrefix.Length).Replace('\', '/')
+        if ($entryName.StartsWith('/') -or $entryName -match '(^|/)\.\.(/|$)') {
+            throw "Unsafe ZIP entry name: $entryName"
+        }
+        [IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+            $archive, $fileFull, $entryName,
+            [IO.Compression.CompressionLevel]::Optimal) | Out-Null
+    }
+} finally {
+    $archive.Dispose()
+}
+
+# Read the archive back and reject non-portable entry names outright, so a
+# regression in the writer can never ship a zip that only extracts on Windows.
+$archive = [IO.Compression.ZipFile]::OpenRead($zipFull)
+try {
+    $badEntries = @($archive.Entries | Where-Object {
+        $_.FullName.Contains('\') -or
+        $_.FullName.StartsWith('/') -or
+        $_.FullName -match '(^|/)\.\.(/|$)'
+    })
+    if ($badEntries.Count -ne 0) {
+        throw "ZIP contains non-portable entry names: $(
+            ($badEntries | ForEach-Object FullName) -join ', ')"
+    }
+    if ($archive.Entries.Count -ne $files.Count) {
+        throw "ZIP entry count mismatch: expected $($files.Count), got $(
+            $archive.Entries.Count)"
+    }
+    $runtimeEntry = $archive.GetEntry('game.toml')
+    if ($null -eq $runtimeEntry) { throw 'Runtime presentation config missing from ZIP.' }
+    $reader = [IO.StreamReader]::new($runtimeEntry.Open(), [Text.Encoding]::UTF8)
+    try { $packagedConfig = $reader.ReadToEnd() } finally { $reader.Dispose() }
+    if ($packagedConfig -cne $runtimeConfig) {
+        throw 'ZIP runtime presentation config differs from the authored profile.'
+    }
+    foreach ($notice in $fontNotices) {
+        if ($null -eq $archive.GetEntry("licenses/fonts/$notice")) {
+            throw "Bundled font notice missing from ZIP: $notice"
+        }
+    }
+} finally {
+    $archive.Dispose()
+}
+
+Write-Host "--- $stageName ---"
+Get-ChildItem -LiteralPath $stage | Select-Object Name, Length | Out-Host
+Get-Item -LiteralPath $zip | Select-Object Name, Length | Out-Host
+Get-FileHash -LiteralPath $zip -Algorithm SHA256 | Select-Object Algorithm, Hash, Path | Out-Host

@@ -1,0 +1,92 @@
+#include <cstdio>
+#include <cstring>
+#include <string>
+#include <vector>
+
+#include "runtime.h"
+#include "mmz_extended_view.h"
+
+#if defined(GBAGAME_RECOMP_UI)
+#include "game_launcher_boot.h"
+#endif
+
+namespace {
+
+void print_usage() {
+    std::printf(
+        "MegaManZeroRecomp [--bios <path>] [--rom <path>] "
+        "[--view-width <240..480>] [--resize-view] [game.toml]\n"
+        "The BIOS and ROM must match the SHA-1 identities in game.toml.\n"
+        "Adaptive Widescreen is enabled in a fresh mod catalog. Disable it "
+        "for the faithful 240 view. 288 is the recommended extended width; "
+        "384 is a progressive test width; "
+        "480 is an exact-2x research mode. --resize-view instead follows "
+        "the live window aspect ratio.\n");
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--version") == 0) {
+            std::printf("MegaManZeroRecomp v%s\n", MMZ_VERSION);
+            return 0;
+        }
+        if (std::strcmp(argv[i], "--help") == 0 ||
+            std::strcmp(argv[i], "-h") == 0) {
+            print_usage();
+            return 0;
+        }
+    }
+
+    gbarecomp::RunOptions opts;
+    opts.builtin_game_name = "Mega Man Zero";
+    opts.builtin_rom_sha1 = "403a78f2cad93d41e4b0f2e520ce08026531664b";
+    // CRC32 of the pinned USA ROM (same dump the SHA-1 gates on); the
+    // launcher's GAME card uses it for its "ROM verified" check.
+    opts.builtin_rom_crc32 = 0;
+    // Opt into the data-only .gbamod package catalog. Packages target this
+    // stable ID plus builtin_rom_sha1 and may activate only the trusted
+    // callbacks registered in src/mods/.
+    opts.mod_game_id = "mega-man-zero-us";
+    // The adaptive-view implementation stays game-owned, but its activation is
+    // authoritative in Mods rather than the generic Display settings.
+    opts.mod_owns_adaptive_view = true;
+    opts.max_view_width = 480;
+    // Keep the validated fixed-width modes while also exposing an elective
+    // adaptive policy. In adaptive mode the logical height remains 160 and
+    // the live drawable aspect selects a width from 240 through 480.
+    opts.max_resize_view_width = 480;
+    opts.resize_driven_view = true;
+    // Adaptive activation now lives on the Mods page (mod_owns_adaptive_view),
+    // so the generic Display toggle would be a second, non-authoritative
+    // control for the same capability. The fixed-width aspect vocabulary below
+    // remains a separate axis and stays on Display.
+    opts.launcher_expose_adaptive_view = false;
+    opts.extended_view_init = mmz::install_extended_view;
+    opts.launcher_region = "USA";
+    opts.launcher_game_config = "game.toml";   // prefill ROM/BIOS from [rom]/[bios]
+    opts.launcher_save_path = "saves/megaman_zero_usa.sav";  // game.toml [save].path
+    // Extended-view aspect cycle (EXPERIMENTAL-tagged in the launcher, the
+    // snesrecomp/psxrecomp widescreen convention): every width the runtime's
+    // extended view supports, native first. The committed index maps to
+    // --view-width.
+    static const char* const kAspectLabels[] = {
+        "3:2 (Native)", "9:5 (288 px)", "12:5 (384 px)", "6:2 (480 px)"
+    };
+    static const std::uint16_t kAspectWidths[] = { 240, 288, 384, 480 };
+    opts.launcher_aspect_labels      = kAspectLabels;
+    opts.launcher_aspect_view_widths = kAspectWidths;
+    opts.launcher_num_aspects        = 4;
+
+#if defined(GBAGAME_RECOMP_UI)
+    std::vector<std::string> args(argv, argv + argc);
+    if (game_launcher_preboot(args, opts)) return 0;   // user quit the launcher
+    std::vector<char*> av;
+    av.reserve(args.size());
+    for (auto& s : args) av.push_back(s.data());
+    return gbarecomp::run_game(static_cast<int>(av.size()), av.data(), opts);
+#else
+    return gbarecomp::run_game(argc, argv, opts);
+#endif
+}

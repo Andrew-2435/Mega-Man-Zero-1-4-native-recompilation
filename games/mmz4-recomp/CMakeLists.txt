@@ -1,0 +1,152 @@
+﻿cmake_minimum_required(VERSION 3.20)
+project(MegaManZero4Recomp VERSION 0.0.13 LANGUAGES C CXX)
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+set(GBARECOMP_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/gbarecomp"
+    CACHE PATH "Path to the sibling gbarecomp checkout")
+set(RECOMP_UI_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/recomp-ui"
+    CACHE PATH "Path to the shared recomp-ui checkout")
+set(GBARECOMP_RUNTIME_UI_ROOT "${RECOMP_UI_ROOT}"
+    CACHE PATH "recomp-ui root used by the live GBA runtime adapter")
+# Mega Man Zero exposes its game-owned adaptive extended view through the
+# package catalog rather than the generic Display settings. Setting this before
+# add_subdirectory() lets gbarecomp link the mod runtime and open recomp-ui's
+# otherwise inert Mods gate.
+set(GBARECOMP_ENABLE_MODS ON CACHE BOOL
+    "Enable Mega Man Zero's built-in mod catalog and GBA mod packages" FORCE)
+
+if(NOT EXISTS "${GBARECOMP_ROOT}/CMakeLists.txt")
+    message(FATAL_ERROR
+        "GBARECOMP_ROOT is not a gbarecomp checkout:\n"
+        "  ${GBARECOMP_ROOT}\n"
+        "Clone gbarecomp next to this repository or configure with "
+        "-DGBARECOMP_ROOT=<path>.")
+endif()
+
+add_subdirectory("${GBARECOMP_ROOT}" gbarecomp_build EXCLUDE_FROM_ALL)
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/generated/recompiled.cpp")
+    message(FATAL_ERROR
+        "Stale monolithic generated/recompiled.cpp found. "
+        "Run tools/regen.ps1 with the current gbarecomp before building.")
+endif()
+file(GLOB GAME_GENERATED_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/generated/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/generated/*.cpp")
+
+add_executable(MegaManZero4Recomp
+    src/main.cpp
+    src/mmz_extended_view.cpp
+    src/mods/mmz_adaptive_view_plugin.cpp
+    ${GAME_GENERATED_SOURCES}
+)
+set_source_files_properties(src/main.cpp PROPERTIES
+    COMPILE_DEFINITIONS MMZ_VERSION="${PROJECT_VERSION}")
+
+# Keep generated guest translation units at a bounded optimization/debug-info
+# cost. gba_recompile partitions them into stable shards; the dispatch table and
+# symbol map remain ordinary small generated units.
+set(GAME_RECOMPILED_SOURCES ${GAME_GENERATED_SOURCES})
+list(FILTER GAME_RECOMPILED_SOURCES INCLUDE REGEX
+    "/recompiled_[0-9]+\\.cpp$")
+set(MMZ_GENERATED_OPTIMIZATION "O2" CACHE STRING "Generated CPU optimization: O1 or O2")
+set_property(CACHE MMZ_GENERATED_OPTIMIZATION PROPERTY STRINGS O1 O2)
+if(NOT MMZ_GENERATED_OPTIMIZATION MATCHES "^(O1|O2)$")
+    message(FATAL_ERROR "MMZ_GENERATED_OPTIMIZATION must be O1 or O2")
+endif()
+if(GAME_RECOMPILED_SOURCES)
+    set_source_files_properties(${GAME_RECOMPILED_SOURCES} PROPERTIES
+        COMPILE_OPTIONS "-${MMZ_GENERATED_OPTIMIZATION};-g0")
+endif()
+
+target_include_directories(MegaManZero4Recomp PRIVATE
+    "${GBARECOMP_ROOT}/src/armv4t"
+    "${GBARECOMP_ROOT}/src/gba"
+    "${GBARECOMP_ROOT}/src/runtime"
+    "${GBARECOMP_ROOT}/src/debug")
+
+target_link_libraries(MegaManZero4Recomp PRIVATE
+    "-Wl,--start-group"
+    gbarecomp_runtime
+    gbarecomp_debug
+    gbarecomp_gba
+    gbarecomp_armv4t
+    "-Wl,--end-group")
+
+add_executable(mmz_wide_hud_rows_tests EXCLUDE_FROM_ALL
+    tests/wide_hud_rows_test.cpp "${GBARECOMP_ROOT}/tools/bios_smoke/dispatch_stub.cpp")
+target_include_directories(mmz_wide_hud_rows_tests PRIVATE
+    "${GBARECOMP_ROOT}/src/gba" "${GBARECOMP_ROOT}/src/debug"
+    "${GBARECOMP_ROOT}/src/runtime" "${GBARECOMP_ROOT}/src/armv4t" "${GBARECOMP_ROOT}/src/link")
+target_link_gbarecomp_runtime_stack(mmz_wide_hud_rows_tests)
+
+target_compile_definitions(MegaManZero4Recomp PRIVATE
+    GBARECOMP_DEFAULT_DEBUG_PORT=19862
+    GBARECOMP_WINDOW_TITLE="MegaManZero4Recomp"
+    GBARECOMP_DEFAULT_GAME_CONFIG="game.toml")
+
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# recomp-ui pre-boot launcher (Dear ImGui), consumed as a git submodule
+# (junctioned locally to the shared checkout). Isolated in its own
+# static lib so recomp-ui's sources + RECOMP_LAUNCHER define never
+# touch the giant generated/*.c TU flags â€” only main.cpp (gated on
+# GBAGAME_RECOMP_UI) and game_launcher_boot.cpp know the launcher exists.
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+option(GBAGAME_RECOMP_UI "Build the recomp-ui pre-boot launcher" ON)
+if(GBAGAME_RECOMP_UI)
+    include(${RECOMP_UI_ROOT}/recomp_ui.cmake)
+    add_library(game_launcher_ui STATIC src/game_launcher_boot.cpp)
+    target_include_directories(game_launcher_ui PRIVATE
+        "${GBARECOMP_ROOT}/src/runtime"   # launcher_seam.h + runtime.h
+        "${GBARECOMP_ROOT}/src/gba"
+        src
+    )
+    # This lib deliberately does NOT link gbarecomp_runtime, so it does not
+    # inherit that target's PUBLIC GBARECOMP_ENABLE_MODS. Without this the
+    # launcher seam compiles its mod provider out and the Mods page never
+    # appears, even with the catalog staged and the runtime built with mods.
+    if(GBARECOMP_ENABLE_MODS)
+        target_compile_definitions(game_launcher_ui PRIVATE
+            GBARECOMP_ENABLE_MODS=1)
+    endif()
+    # sources, includes, RECOMP_LAUNCHER, asset staging
+    recomp_target_launcher_ui(game_launcher_ui
+        CONSOLE gba
+        BOXART ${CMAKE_CURRENT_SOURCE_DIR}/recomp/launcher/boxart.tga)
+    find_package(SDL2 REQUIRED)
+    target_link_libraries(game_launcher_ui PUBLIC SDL2::SDL2)
+    if(WIN32)
+        target_link_libraries(game_launcher_ui PUBLIC opengl32)
+    endif()
+    target_link_libraries(MegaManZero4Recomp PRIVATE game_launcher_ui)
+    target_link_libraries(mmz_wide_hud_rows_tests PRIVATE game_launcher_ui)
+    target_compile_definitions(MegaManZero4Recomp PRIVATE GBAGAME_RECOMP_UI)
+set_source_files_properties(src/main.cpp PROPERTIES COMPILE_DEFINITIONS MMZ_VERSION="")
+endif()
+
+# Ship the game-owned, enabled-by-default adaptive-view package beside the
+# executable. The launcher seam resolves the catalog at <exe dir>/mods, and
+# user-installed .gbamod archives join this same catalog.
+set(MMZ_PRELOADED_MODS "${CMAKE_CURRENT_SOURCE_DIR}/mods/preloaded")
+# Temporarily disabled to fix build hang
+# if(EXISTS "${MMZ_PRELOADED_MODS}/packages")
+#     add_custom_command(TARGET MegaManZero4Recomp POST_BUILD
+#         COMMAND ${CMAKE_COMMAND} -E copy_directory
+#             "${MMZ_PRELOADED_MODS}"
+#             "$<TARGET_FILE_DIR:MegaManZero4Recomp>/mods"
+#         COMMENT "Preloading the Mega Man Zero mod catalog")
+# endif()
+
+if(MSVC)
+    target_link_options(MegaManZero4Recomp PRIVATE /STACK:16777216)
+elseif(MINGW OR WIN32)
+    target_link_options(MegaManZero4Recomp PRIVATE -Wl,--stack,16777216)
+endif()
+
+
+
+
+

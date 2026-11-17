@@ -1,0 +1,42 @@
+# ROMs and BIOS (do not redistribute)
+roms/
+*.gba
+*.gbc
+*.gb
+*.bin
+bios/
+gba_bios.bin
+
+# Build artifacts
+build/
+*.exe
+*.o
+*.obj
+*.a
+*.lib
+*.dll
+
+# Save files
+saves/
+*.sav
+*.sav.*
+
+# Discovery sessions
+discovery_sessions/
+*.toml.frag
+
+# Generated code
+generated/
+
+# OS files
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Temp
+*.log
+*.tmp
+
+# Source images (user-provided, not part of repo)
+MMZ*Boxart.*
+boxart_*_check.*

@@ -1,0 +1,488 @@
+﻿# Mega Man Zero 4 (USA, B4ZE, revision 0) - initial bring-up config.
+# Corpus starts empty; populate from discovery/analysis.
+
+[game]
+name = "Mega Man Zero 4"
+short_name = "megaman_zero_4"
+
+[program]
+name = "Mega Man Zero 4 (USA)"
+id = "B4ZE"
+load_address = 0x08000000
+size = 0x01000000
+entry_pc = 0x08000000
+speculative_literal_harvest = false
+codegen_shards = 16
+
+[identity]
+sha1 = "596993205a1895a6f51e80749407fb069b907628"
+
+[bios]
+path = "gbarecomp/bios/gba_bios.bin"
+sha1 = "300c20df6731a33952ded8c436f7f186d25d3492"
+hle = false
+skip_intro = true
+
+[rom]
+path = "roms/megaman_zero_4_usa.gba"
+sha1 = "596993205a1895a6f51e80749407fb069b907628"
+
+[save]
+type = "eeprom"
+size = 8192
+path = "saves/megaman_zero_4_usa.sav"
+
+[runtime]
+debug_port = 19865
+window_title = "MegaManZero4Recomp"
+
+[video]
+screen = "raw"
+view_width = 240
+resize_view = false
+
+[audio]
+shadow = false
+
+# --- IWRAM code copy (byte-matched, 64 bytes) ---
+[[code_copy]]
+runtime_start = 0x03000000
+source_start = 0x0812648C
+size = 0x00000040
+name = "iwram_code_0000"
+note = "64-byte match; covers IWRAM dispatch miss at 0x03000000"
+
+
+
+# --- Discovery session 20261117 ---
+
+[[extra_func]]
+addr = 0x00000018
+mode = "arm"
+note = "proposed from self-heal miss-log; bridged x25532"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[[extra_func]]
+addr = 0x0800033C
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x6370"
+
+[[extra_func]]
+addr = 0x08000D62
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x1997; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x08000D66
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x2000; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x08000D6A
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x2000; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x08000DDA
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x1983; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x080055A4
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x31"
+
+[[extra_func]]
+addr = 0x08007638
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x1002"
+
+[[extra_func]]
+addr = 0x0800A498
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x2"
+
+[[extra_func]]
+addr = 0x0800A52C
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x771"
+
+[[extra_func]]
+addr = 0x0800A6F0
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x864"
+
+[[extra_func]]
+addr = 0x0800A900
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x138"
+
+[[extra_func]]
+addr = 0x0800AA7C
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x633"
+
+[[extra_func]]
+addr = 0x0800ACB8
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x726"
+
+[[extra_func]]
+addr = 0x0800B00C
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x138"
+
+[[extra_func]]
+addr = 0x0801FB74
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x6"
+
+[[extra_func]]
+addr = 0x0801FB78
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x138"
+
+[[extra_func]]
+addr = 0x0801FCE4
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x633"
+
+[[extra_func]]
+addr = 0x0802F1B4
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x1"
+
+[[extra_func]]
+addr = 0x0802F498
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x632"
+
+[[extra_func]]
+addr = 0x0803A8C0
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x7"
+
+[[extra_func]]
+addr = 0x0803B1BC
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x3"
+
+[[extra_func]]
+addr = 0x0803B454
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x7"
+
+[[extra_func]]
+addr = 0x0803B4C4
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x134"
+
+[[extra_func]]
+addr = 0x0803B550
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x7"
+
+[[extra_func]]
+addr = 0x0803B580
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x7"
+
+[[extra_func]]
+addr = 0x0803DB00
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x7"
+
+[[extra_func]]
+addr = 0x0803DBA8
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x154"
+
+[[extra_func]]
+addr = 0x080D083C
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x4"
+
+[[extra_func]]
+addr = 0x080D11B4
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x2"
+
+[[extra_func]]
+addr = 0x080D1200
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x1264"
+
+[[extra_func]]
+addr = 0x080D1410
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x1"
+
+[[extra_func]]
+addr = 0x080D149C
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x159; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x080D150C
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x1; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x080D152C
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x160; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x080D3B14
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x1"
+
+[[extra_func]]
+addr = 0x080D3B2C
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x135"
+
+[[extra_func]]
+addr = 0x080D3CA4
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x135"
+
+[[extra_func]]
+addr = 0x080DA190
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x5"
+
+[[extra_func]]
+addr = 0x080DA1DC
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x335"
+
+[[extra_func]]
+addr = 0x080EBB90
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x2"
+
+[[extra_func]]
+addr = 0x080EBC00
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x769"
+
+[[extra_func]]
+addr = 0x08109BD4
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x18; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x08109C44
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x12; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x08109CA4
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x1764; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x08109E18
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x9"
+
+[[extra_func]]
+addr = 0x08109E70
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x1323"
+
+[[extra_func]]
+addr = 0x08109FF8
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x24"
+
+[[extra_func]]
+addr = 0x0810A058
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x1440"
+
+[[extra_func]]
+addr = 0x0810A5F0
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x3"
+
+[[extra_func]]
+addr = 0x0810A660
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x441"
+
+[[extra_func]]
+addr = 0x0810BFEC
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x8"
+
+[[extra_func]]
+addr = 0x0810C044
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x212"
+
+[[extra_func]]
+addr = 0x081267BC
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x78; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x081267D4
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x636; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x081267F4
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x28; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x08126864
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x8; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x0812687C
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x22; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x08126884
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x14; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x081268A0
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x20; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x081268F0
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x54; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x081268F6
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x54; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x08126904
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x64; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x0812690A
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x64; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x08126918
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x98; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x08126932
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x98; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x0812693A
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x98; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x08126942
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x98; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x08126948
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x79; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x0812694E
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x79; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x0812695C
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x50; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x08126962
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x50; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x08126970
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x3; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x08126976
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x3; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x08126A24
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x27762; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x08126A40
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x25779; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x08126A64
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x3731; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x08126AB4
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x301; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x08126AC8
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x64; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x08126B0A
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x335; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
+
+[[extra_func]]
+addr = 0x08126BE0
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x65"
+
+[[extra_func]]
+addr = 0x08126C08
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x70"
+
+[[extra_func]]
+addr = 0x08126F00
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x9"
+
+# --- IWRAM dispatch target from discovery session ---
+
