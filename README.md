@@ -164,6 +164,7 @@ Each game uses a discovery-based approach for static recompilation:
 - **mstan** — Creator of [`gbarecomp`](https://github.com/mstan/gbarecomp), [`recomp-ui`](https://github.com/mstan/recomp-ui), and the original Mega Man Zero recompilation project. This project builds upon his work and tools.
 - **Capcom** — Mega Man Zero series.
 - **SDL2** — Simple DirectMedia Layer (zlib license).
+- **AI-assisted development** — Brought-up, configured, and extended with the help of OpenCode (Beam AI assistant).
 
 ## 📄 License
 
