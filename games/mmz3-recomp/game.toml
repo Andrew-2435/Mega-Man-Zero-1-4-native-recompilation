@@ -43,7 +43,7 @@ view_width = 240
 resize_view = false
 
 [audio]
-shadow = false
+shadow = true
 
 # --- IWRAM code copy (byte-matched, 64 bytes) ---
 [[code_copy]]
@@ -250,3 +250,15 @@ note = "proposed from self-heal miss-log; bridged x8"
 
 # --- IWRAM dispatch target from discovery session ---
 
+
+# --- Discovery session (new misses) ---
+
+[[extra_func]]
+addr = 0x03000170
+mode = "arm"
+note = "proposed from self-heal miss-log; bridged x5027"
+
+[[extra_func]]
+addr = 0x030016BC
+mode = "arm"
+note = "proposed from self-heal miss-log; bridged x3992"

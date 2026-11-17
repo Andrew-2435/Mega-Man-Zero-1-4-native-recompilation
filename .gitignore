@@ -37,6 +37,9 @@ desktop.ini
 *.log
 *.tmp
 
+# Release artifacts
+release-stage/
+
 # Source images (user-provided, not part of repo)
 MMZ*Boxart.*
 boxart_*_check.*

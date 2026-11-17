@@ -1138,3 +1138,10 @@ note = "proposed from self-heal miss-log; bridged x17407"
 addr = 0x080AD380
 mode = "thumb"
 note = "proposed from self-heal miss-log; bridged x32"
+
+# --- Discovery session 20261117-171650-389 ---
+
+[[extra_func]]
+addr = 0x080AD3D0
+mode = "thumb"
+note = "proposed from self-heal miss-log; bridged x32"

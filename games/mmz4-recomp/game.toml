@@ -44,14 +44,6 @@ resize_view = false
 [audio]
 shadow = false
 
-# --- IWRAM code copy (byte-matched, 64 bytes) ---
-[[code_copy]]
-runtime_start = 0x03000000
-source_start = 0x0812648C
-size = 0x00000040
-name = "iwram_code_0000"
-note = "64-byte match; covers IWRAM dispatch miss at 0x03000000"
-
 
 
 # --- Discovery session 20261117 ---
@@ -486,3 +478,15 @@ note = "proposed from self-heal miss-log; bridged x9"
 
 # --- IWRAM dispatch target from discovery session ---
 
+
+# --- Discovery session (new misses) ---
+
+[[extra_func]]
+addr = 0x03000170
+mode = "arm"
+note = "proposed from self-heal miss-log; bridged x6828"
+
+[[extra_func]]
+addr = 0x030016BC
+mode = "arm"
+note = "proposed from self-heal miss-log; bridged x3996"
