@@ -1,5 +1,7 @@
 # Mega Man Zero 1–4 — Native Recompilation
 
+![Mega Man Zero Banner](assets/banner.jpg)
+
 Native (static-recomp) ports of **Mega Man Zero 1–4** for PC, built with [`gbarecomp`](https://github.com/mstan/gbarecomp) and [`recomp-ui`](https://github.com/mstan/recomp-ui).
 
 Each game is individually recompiled from its GBA ROM into a standalone Windows executable with an integrated Dear ImGui launcher (settings, controls, mod support). A multi-game launcher lets you switch between titles without leaving the UI.
