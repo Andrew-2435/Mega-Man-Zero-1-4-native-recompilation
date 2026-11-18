@@ -91,6 +91,26 @@ addr = 0x08000DDA
 mode = "thumb"
 note = "proposed from self-heal miss-log; bridged x1983; part of a JUMP-TABLE CANDIDATE (prefer a sized [[jump_table]])"
 
+# Reviewed follow-up from the fully-static MMZ4 performance trace. Once the
+# IWRAM helpers stopped falling into the interpreter, these low-ROM switch
+# targets became reachable through the native dispatcher. Bytes were checked
+# against the ROM: D24/D84 are Thumb prologues, DBA is a reviewed case target
+# inside the same routine and returns through its shared epilogue.
+[[extra_func]]
+addr = 0x08000D24
+mode = "thumb"
+note = "reviewed Thumb function prologue at 0x08000D24; bridged x97"
+
+[[extra_func]]
+addr = 0x08000D84
+mode = "thumb"
+note = "reviewed Thumb function prologue at 0x08000D84; bridged x45"
+
+[[extra_func]]
+addr = 0x08000DBA
+mode = "thumb"
+note = "reviewed low-ROM switch case target; shares the 0x08000D84 epilogue"
+
 [[extra_func]]
 addr = 0x080055A4
 mode = "thumb"
@@ -484,12 +504,153 @@ note = "proposed from self-heal miss-log; bridged x9"
 [[extra_func]]
 addr = 0x03000170
 mode = "arm"
-note = "proposed from self-heal miss-log; bridged x6828"
+source_addr = 0x081265FC
+note = "IWRAM helper copied from ROM; source matched byte-for-byte in captured IWRAM"
 
 [[extra_func]]
 addr = 0x030016BC
 mode = "arm"
-note = "proposed from self-heal miss-log; bridged x3996"
+source_addr = 0x080002B0
+note = "IWRAM helper copied from ROM; 44-byte match at 0x080002B0"
+
+[[extra_func]]
+addr = 0x0300000C
+mode = "arm"
+source_addr = 0x08126498
+note = "ARM helper inside IWRAM code-copy root; source matched at ROM 0x08126498"
+
+[[extra_func]]
+addr = 0x030015C8
+mode = "arm"
+source_addr = 0x080001BC
+note = "ARM helper copied with the 0x030016BC bundle; same source/runtime bias"
+
+# --- Reviewed static coverage from the 600-frame performance trace ---
+# Every address below was executed by the input-trace session. The IWRAM
+# bundle is byte-for-byte copied from ROM 0x0812648C; its source addresses are
+# recorded per entry so the offline recompiler can decode the runtime PCs.
+# These entries replace the costly runtime self-heal path for the hot mixer.
+
+[[extra_func]]
+addr = 0x03000000
+mode = "thumb"
+source_addr = 0x0812648C
+note = "IWRAM code-copy root; bridged x599"
+
+[[extra_func]]
+addr = 0x030000A0
+mode = "thumb"
+source_addr = 0x0812652C
+note = "reviewed switch case; bridged x2971"
+
+[[extra_func]]
+addr = 0x030000A6
+mode = "thumb"
+source_addr = 0x08126532
+note = "reviewed switch case; bridged x129"
+
+[[extra_func]]
+addr = 0x030000B0
+mode = "thumb"
+source_addr = 0x0812653C
+note = "reviewed switch case; bridged x129"
+
+[[extra_func]]
+addr = 0x030000CC
+mode = "thumb"
+source_addr = 0x08126558
+note = "reviewed switch case; bridged x96"
+
+[[extra_func]]
+addr = 0x030000E0
+mode = "thumb"
+source_addr = 0x0812656C
+note = "reviewed switch case; bridged x98"
+
+[[extra_func]]
+addr = 0x030000E6
+mode = "thumb"
+source_addr = 0x08126572
+note = "reviewed switch case; bridged x2842"
+
+[[extra_func]]
+addr = 0x03000120
+mode = "thumb"
+source_addr = 0x081265AC
+note = "reviewed switch case; bridged x129"
+
+[[extra_func]]
+addr = 0x03000128
+mode = "thumb"
+source_addr = 0x081265B4
+note = "reviewed switch case; bridged x129"
+
+[[extra_func]]
+addr = 0x03000134
+mode = "thumb"
+source_addr = 0x081265C0
+note = "reviewed switch case; bridged x129"
+
+[[extra_func]]
+addr = 0x03000156
+mode = "thumb"
+source_addr = 0x081265E2
+note = "reviewed switch case; bridged x1735"
+
+[[extra_func]]
+addr = 0x0807F804
+mode = "thumb"
+note = "reviewed cart miss; bridged x6"
+
+[[extra_func]]
+addr = 0x08092F14
+mode = "thumb"
+note = "reviewed cart miss; bridged x1482"
+
+[[extra_func]]
+addr = 0x080A5244
+mode = "thumb"
+note = "reviewed cart miss; bridged x9"
+
+[[extra_func]]
+addr = 0x080A52E0
+mode = "thumb"
+note = "reviewed cart miss; bridged x249"
+
+[[extra_func]]
+addr = 0x080A54D0
+mode = "thumb"
+note = "reviewed cart miss; bridged x39"
+
+[[extra_func]]
+addr = 0x080D0B88
+mode = "thumb"
+note = "reviewed cart miss; bridged x1"
+
+[[extra_func]]
+addr = 0x080D0BB0
+mode = "thumb"
+note = "reviewed cart miss; bridged x18"
+
+[[extra_func]]
+addr = 0x080D0BE0
+mode = "thumb"
+note = "reviewed cart miss; bridged x1"
+
+[[extra_func]]
+addr = 0x080D23E0
+mode = "thumb"
+note = "reviewed cart miss; bridged x93"
+
+[[extra_func]]
+addr = 0x080DB900
+mode = "thumb"
+note = "reviewed cart miss; bridged x15"
+
+[[extra_func]]
+addr = 0x080DB96C
+mode = "thumb"
+note = "reviewed cart miss; bridged x195"
 
 # --- Authored-strip streamer hooks (MMZ4) ---
 [[extra_func]]

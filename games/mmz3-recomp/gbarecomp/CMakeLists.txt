@@ -172,7 +172,7 @@ option(GBARECOMP_STATIC_RELEASE
     OFF)
 option(GBARECOMP_SELFHEAL_RECOMPILE_DEFAULT
     "Enable runtime self-heal overlay compilation by default"
-    ON)
+    OFF)
 
 # First-divergence co-simulation oracle (COSIM_ORACLE.md). When ON, compiles the
 # cosim full-state hash + cycle-keyed park/step TCP engine and arms the runtime_tick

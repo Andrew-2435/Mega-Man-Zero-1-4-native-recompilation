@@ -22,8 +22,14 @@
 #include "../gba/gba_bus.h"       // rom_ptr / rom_size
 #include "../gba/gba_bios.h"      // GbaBios snapshot
 
+// Runtime self-healing is a development aid, not a shipping performance path.
+// A cold heal compiles a storm of tiny overlays (measured at 23.7 fps on MMZ4),
+// and even with a warm cache the overlays fragment dispatch and ran slower than
+// the plain interpreter bridge (40.6 vs 58.3 fps). Reviewed misses belong in
+// game.toml and are baked by the offline recompiler instead. Keep the heuristic
+// opt-in; set GBARECOMP_SELFHEAL_RECOMPILE=1 explicitly when authoring metadata.
 #ifndef GBARECOMP_SELFHEAL_RECOMPILE_DEFAULT
-#  define GBARECOMP_SELFHEAL_RECOMPILE_DEFAULT 1
+#  define GBARECOMP_SELFHEAL_RECOMPILE_DEFAULT 0
 #endif
 
 namespace fs = std::filesystem;

@@ -52,26 +52,78 @@ bool heal_simulate_shipped() {
     return be && std::strcmp(be, "auto-no-gcc") == 0;
 }
 
+// Resolve a program name against PATH to an absolute path. Returning an
+// absolute compiler path matters on Windows: child_environment() prepends that
+// directory so the driver can find its assembler and private DLLs.
+std::string find_on_path(const char* name) {
+    const char* raw_path = std::getenv("PATH");
+    if (!raw_path || !*raw_path || !name || !*name) return "";
+
+#if defined(_WIN32)
+    const char separator = ';';
+    const bool has_extension = std::strchr(name, '.') != nullptr;
+#else
+    const char separator = ':';
+    const bool has_extension = true;
+#endif
+
+    const char* cursor = raw_path;
+    for (;;) {
+        const char* end = std::strchr(cursor, separator);
+        std::string dir(cursor, end ? static_cast<std::size_t>(end - cursor)
+                                    : std::strlen(cursor));
+        if (!dir.empty() && dir.front() == '"' && dir.back() == '"')
+            dir = dir.substr(1, dir.size() - 2);
+        if (!dir.empty() && dir.back() == '\\') dir.pop_back();
+
+        if (!dir.empty()) {
+            const std::vector<std::string> names =
+                has_extension ? std::vector<std::string>{name}
+                              : std::vector<std::string>{
+#if defined(_WIN32)
+                                    std::string(name) + ".exe", std::string(name)
+#else
+                                    std::string(name)
+#endif
+                                };
+            for (const std::string& candidate_name : names) {
+                const fs::path candidate = fs::path(dir) / candidate_name;
+                std::error_code ec;
+                if (!fs::is_regular_file(candidate, ec)) continue;
+                const fs::path absolute = fs::absolute(candidate, ec);
+                return (ec ? candidate : absolute).string();
+            }
+        }
+        if (!end) break;
+        cursor = end + 1;
+    }
+    return "";
+}
+
 // The C++ compiler used to build overlay shared objects. GBARECOMP_HEAL_CXX
 // overrides for non-default installs.
 //
-// The default used to be the Windows dev box's absolute msys2 path
-// unconditionally, so on macOS and Linux every heal attempt died with
-//
-//     sh: C:/msys64/mingw64/bin/g++.exe: No such file or directory
-//
-// which surfaces as `gcc exit 32512` (127 << 8, "command not found") and leaves
-// the session permanently on the interpreter bridge: coverage can never reach
-// FULLY STATIC off Windows, however many misses are merged into the config.
-// Prefer a bare compiler name elsewhere and let PATH resolve it.
+// The old Windows default was an unconditional absolute msys2 path. Machines
+// with MinGW installed elsewhere (for example C:/mingw64/bin/g++.exe) selected
+// the gcc backend through PATH but every compile died with exit -1, leaving the
+// session permanently on the interpreter bridge. Resolve the compiler through
+// PATH instead, and only fall back to the historical name when no file is
+// found, so the spawn failure stays loud and diagnosable.
 std::string gxx_path() {
     if (const char* e = std::getenv("GBARECOMP_HEAL_CXX")) {
-        if (e[0]) return e;
+        if (e[0]) {
+            const fs::path configured(e);
+            if (configured.has_parent_path()) return e;
+            const std::string found = find_on_path(e);
+            return found.empty() ? e : found;
+        }
     }
 #if defined(_WIN32)
-    return "C:/msys64/mingw64/bin/g++.exe";
+    const std::string found = find_on_path("g++");
+    return found.empty() ? std::string("g++") : found;
 #else
-    return "c++";
+    const std::string found = find_on_path("c++");
+    return found.empty() ? std::string("c++") : found;
 #endif
 }
 

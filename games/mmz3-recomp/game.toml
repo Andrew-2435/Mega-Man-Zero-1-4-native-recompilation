@@ -248,6 +248,17 @@ addr = 0x080FCB2C
 mode = "thumb"
 note = "proposed from self-heal miss-log; bridged x8"
 
+# --- Reviewed cart misses from the 600-frame performance trace ---
+[[extra_func]]
+addr = 0x08001E14
+mode = "thumb"
+note = "reviewed cart miss; push {r4,r5,lr} function prologue, bridged x600"
+
+[[extra_func]]
+addr = 0x08001E74
+mode = "thumb"
+note = "reviewed cart miss; push {lr}/sub sp,#4 function prologue, bridged x599"
+
 # --- IWRAM dispatch target from discovery session ---
 
 
@@ -256,12 +267,20 @@ note = "proposed from self-heal miss-log; bridged x8"
 [[extra_func]]
 addr = 0x03000170
 mode = "arm"
-note = "proposed from self-heal miss-log; bridged x5027"
+source_addr = 0x080FC228
+note = "IWRAM helper copied from ROM; byte-for-byte match with 0x080FC228 (whole 0x03000000..0x03000380 bundle matches ROM 0x080FC0B8..0x080FC438)"
+
+[[extra_func]]
+addr = 0x030015C8
+mode = "arm"
+source_addr = 0x080001BC
+note = "IWRAM IRQ helper copied with the 0x030016BC bundle; 288-byte byte-for-byte match at 0x080001BC"
 
 [[extra_func]]
 addr = 0x030016BC
 mode = "arm"
-note = "proposed from self-heal miss-log; bridged x3992"
+source_addr = 0x080002B0
+note = "IWRAM helper copied from ROM; 44-byte match at 0x080002B0"
 
 [[extra_func]]
 addr = 0x00000018

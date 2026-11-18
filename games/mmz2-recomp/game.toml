@@ -740,6 +740,16 @@ addr = 0x030016BC
 mode = "arm"
 note = "Observed IWRAM dispatch miss inside copied routine rooted at 0x03001680"
 
+# --- Reviewed static coverage from the FULLY_STATIC performance trace ---
+# Live IWRAM captured at the RAM dispatch miss PC 0x030015C8. The 0x60 bytes at
+# IWRAM 0x030015C8 match ROM 0x080001BC byte-for-byte (120-byte extent through
+# 0x030016E8). Source/runtime bias matches the 0x030016BC bundle (0x080002B0).
+[[extra_func]]
+addr = 0x030015C8
+mode = "arm"
+source_addr = 0x080001BC
+note = "IWRAM helper copied from ROM; 120-byte match at 0x080001BC; bridged x1199"
+
 # --- ROM dispatch targets from discovery session 20261116-160923-355 ---
 [[extra_func]]
 addr = 0x0800A7EC
