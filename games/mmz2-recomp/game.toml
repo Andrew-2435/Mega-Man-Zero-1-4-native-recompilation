@@ -1145,3 +1145,29 @@ note = "proposed from self-heal miss-log; bridged x32"
 addr = 0x080AD3D0
 mode = "thumb"
 note = "proposed from self-heal miss-log; bridged x32"
+
+# --- Authored-strip streamer hooks (MMZ2) ---
+[[extra_func]]
+addr = 0x08004CA4
+mode = "thumb"
+note = "background layer streamer (VRAM base 4) called from 0x080088C6"
+
+[[extra_func]]
+addr = 0x08005664
+mode = "thumb"
+note = "background layer full reload called from 0x0800889C"
+
+[[extra_func]]
+addr = 0x08006604
+mode = "thumb"
+note = "BG1 full reload called from 0x080088F0"
+
+[[extra_func]]
+addr = 0x080067A8
+mode = "thumb"
+note = "BG1 streamer called from 0x08008912"
+
+[[extra_func]]
+addr = 0x080069A0
+mode = "thumb"
+note = "layer scroll publish used as the authored-strip synthesis point"

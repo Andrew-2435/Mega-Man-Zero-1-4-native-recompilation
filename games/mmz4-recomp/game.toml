@@ -490,3 +490,29 @@ note = "proposed from self-heal miss-log; bridged x6828"
 addr = 0x030016BC
 mode = "arm"
 note = "proposed from self-heal miss-log; bridged x3996"
+
+# --- Authored-strip streamer hooks (MMZ4) ---
+[[extra_func]]
+addr = 0x08003620
+mode = "thumb"
+note = "second world layer streamer (BG3 map base 6 / 0x06003000) called from 0x080076EA"
+
+[[extra_func]]
+addr = 0x08003FE0
+mode = "thumb"
+note = "second world layer full reload (BG3 map base 6) called from 0x080076C0"
+
+[[extra_func]]
+addr = 0x08004F80
+mode = "thumb"
+note = "BG1 full reload called from 0x08007714"
+
+[[extra_func]]
+addr = 0x08005124
+mode = "thumb"
+note = "BG1 streamer called from 0x08007736"
+
+[[extra_func]]
+addr = 0x0800531C
+mode = "thumb"
+note = "layer scroll publish used as the authored-strip synthesis point"

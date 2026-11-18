@@ -45,9 +45,8 @@ add_executable(MegaManZero2Recomp
 )
 set_source_files_properties(src/main.cpp PROPERTIES
     COMPILE_DEFINITIONS MMZ_VERSION="${PROJECT_VERSION}")
-# MMZ2 does not share MMZ1's authored-strip hook addresses; use the engine's
-# wrapped-tilemap continuation so expanded margins show real game content.
-target_compile_definitions(MegaManZero2Recomp PRIVATE MMZ_GENERIC_WIDE_VIEW)
+# MMZ2 uses its own authored-strip streamer hooks. No generic wrapped-tilemap
+# fallback is compiled in.
 
 # Keep generated guest translation units at a bounded optimization/debug-info
 # cost. gba_recompile partitions them into stable shards; the dispatch table and
