@@ -267,3 +267,34 @@ note = "proposed from self-heal miss-log; bridged x3992"
 addr = 0x00000018
 mode = "arm"
 note = "BIOS Undefined Instruction handler; miss during main menu"
+
+# --- Authored-strip streamer hooks (MMZ3) ---
+[[extra_func]]
+addr = 0x0800522C
+mode = "thumb"
+note = "background layer streamer candidate called from 0x08009602"
+
+[[extra_func]]
+addr = 0x08005BEC
+mode = "thumb"
+note = "background layer full-reload candidate called from 0x080095D8"
+
+[[extra_func]]
+addr = 0x08006B8C
+mode = "thumb"
+note = "BG1 full-reload candidate called from 0x0800962C"
+
+[[extra_func]]
+addr = 0x08006D30
+mode = "thumb"
+note = "BG1 streamer candidate called from 0x0800964E"
+
+[[extra_func]]
+addr = 0x08006F28
+mode = "thumb"
+note = "BG1 streamer candidate called from 0x0800966A"
+
+[[extra_func]]
+addr = 0x08009550
+mode = "thumb"
+note = "layer streamer dispatcher (static analysis anchor)"

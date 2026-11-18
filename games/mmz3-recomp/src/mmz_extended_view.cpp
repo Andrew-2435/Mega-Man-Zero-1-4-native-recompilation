@@ -19,44 +19,28 @@ extern "C" unsigned g_ws_extra_right;
 namespace mmz {
 namespace {
 
-#if defined(MMZ_GENERIC_WIDE_VIEW)
-// MMZ2-MMZ4 do not share MMZ1's ROM/EWRAM hook addresses, so the authored
-// strip streamer below cannot fire for them. The engine's wrapped-tilemap
-// continuation paints authored background data into the expanded margins
-// instead of leaving black bars.
-int generic_tilemap_provider(int, int, int, std::uint16_t*) {
-    return gba::kWsTilemapKeepWrapped;
-}
-#endif
-
-constexpr std::uint32_t kScrollPublish = 0x0800527Cu;
-constexpr std::uint32_t kPpuPublish = 0x08001B68u;
-constexpr std::uint32_t kTextBgStreamer = 0x08003560u;
-constexpr std::uint32_t kTextBgFullReload = 0x08003F1Cu;
-constexpr std::uint32_t kBg1FullReload = 0x08004ED8u;
-constexpr std::uint32_t kBg1Streamer = 0x0800507Cu;
-constexpr std::uint32_t kBg1State = 0x02005004u;
-constexpr std::uint32_t kBg2State = 0x02005074u;
-constexpr std::uint32_t kBg3State = 0x020050E4u;
+// MMZ3 layer streamers and publish points, verified by runtime tracing on
+// BZ3E rev 0. The dispatcher at 0x08009550 passes the room descriptor in R1;
+// the layer scroll helper at 0x08006F28 runs immediately after each streamer.
+constexpr std::uint32_t kFramePublish = 0x080042DCu;
+constexpr std::uint32_t kScrollPublish = 0x080044F8u;
+constexpr std::uint32_t kLayerPublish = 0x08006F28u;
+constexpr std::uint32_t kLayerDispatcher = 0x08009550u;
+constexpr std::uint32_t kTextBgStreamer = 0x0800522Cu;
+constexpr std::uint32_t kTextBgFullReload = 0x08005BECu;
+constexpr std::uint32_t kBg1FullReload = 0x08006B8Cu;
+constexpr std::uint32_t kBg1Streamer = 0x08006D30u;
+constexpr std::uint32_t kBg1State = 0x020024B4u;
+constexpr std::uint32_t kBg2State = 0x0200253Cu;
+constexpr std::uint32_t kBg3State = 0x020025C4u;
 constexpr std::uint32_t kBg2Vram = 0x06002000u;
 constexpr std::uint32_t kBg3Vram = 0x06003000u;
-constexpr std::uint32_t kBg1Map = 0x0202165Cu;
-constexpr std::uint32_t kBgcntShadow = 0x02004F36u;
-constexpr std::uint32_t kCamera = 0x02022C44u;
-constexpr std::uint32_t kScreenY = 0x08290DECu;
-constexpr std::uint32_t kScreenX = 0x082915ECu;
-constexpr std::uint32_t kRoomGrid = 0x082921ECu;
-constexpr std::uint32_t kDescriptorFamilies = 0x08293BECu;
-constexpr std::uint32_t kVariantSelectors = 0x02005208u;
-constexpr std::uint32_t kHudState = 0x02023640u;
-constexpr std::uint32_t kPlayerHudDraw = 0x080BC48Cu;
-constexpr std::uint32_t kBossHudDraw = 0x080BC680u;
-// UpdateSpawnManager's ordered spawn-point scans use strict camera-X +/- 12
-// metatile bounds. These are the three decoded immediate sites, independently
-// identified in MMZ1 and corroborated by RMZ3's UpdateSpawnManager decomp.
-constexpr std::uint32_t kSpawnLeftBoundInitial = 0x0800E2D2u;
-constexpr std::uint32_t kSpawnLeftBoundForward = 0x0800E2FEu;
-constexpr std::uint32_t kSpawnRightBound = 0x0800E31Cu;
+constexpr std::uint32_t kBg1Map = 0x0202E4A4u;
+// BG0CNT shadow. The world layers validated below are BG1/BG2/BG3 at +2/+4/+6.
+constexpr std::uint32_t kBgcntShadow = 0x020023C4u;
+constexpr std::uint32_t kScrollShadow = 0x020023D0u;
+constexpr std::uint32_t kLayerBase = 0x020024A0u;
+constexpr std::uint32_t kLayerStride = 0x88u;
 constexpr std::size_t kMapBytes = 0x1000u;
 constexpr std::uint32_t kSyntheticReturn = 0xF0000001u;
 
@@ -67,9 +51,11 @@ struct StreamCall {
     std::uint32_t vram_base = 0;
     std::uint32_t r2 = 0;
     std::uint32_t r3 = 0;
-    // 0x08003560 reads the persistent layer state through +0x14. The transient
-    // current-position argument is only the leading X/Y pair.
-    std::array<std::uint32_t, 6> previous{};
+    // MMZ3's streamers compare the transient X/Y in R1 against the persistent
+    // state in R0. A synthetic call needs a shifted copy of the whole state so
+    // tileset/palette/grid pointers survive while the column guard sees the
+    // off-screen position.
+    std::array<std::uint32_t, 32> previous{};
     std::array<std::uint32_t, 2> current{};
 };
 
@@ -87,243 +73,19 @@ std::array<std::array<std::uint32_t, 3>, 3> g_layout_signatures{};
 std::array<bool, 3> g_layout_signature_valid{};
 std::uint32_t g_bg1_data = 0;
 std::int32_t g_bg1_camera_x = 0;
-int (*g_previous_rom_override)(std::uint32_t, std::uint32_t,
-                               std::uint32_t*) = nullptr;
-RuntimeThumbAluImmediateOverride g_previous_thumb_alu_imm_override = nullptr;
-int (*g_previous_obj_x_provider)(int, int*) = nullptr;
-int (*g_previous_bg_x_provider)(int, int, int, int*) = nullptr;
-std::array<bool, 12> g_obj_clip_literal_seen{};
-std::array<bool, 3> g_spawn_bound_seen{};
+// The dispatcher supplies the room descriptor in R1; the layer state carries
+// the room grid pointer at +0x14. Both are needed only for side-boundary
+// validation, never to synthesize the authored maps themselves.
+std::array<std::uint32_t, 3> g_descriptor{};
+std::array<std::uint32_t, 3> g_room_grid{};
 unsigned long long g_seen_state_epoch = 0;
 std::array<std::array<std::int32_t, 2>, 3> g_last_layer_position{};
 std::array<bool, 3> g_last_layer_position_valid{};
 int g_last_pillarbox = -1;
 int g_last_pillarbox_left = -1;
 int g_last_pillarbox_right = -1;
-bool g_player_hud_pending = false;
-bool g_boss_hud_pending = false;
-bool g_player_hud_active = false;
-bool g_boss_hud_active = false;
 
 bool trace_enabled();
-
-int thumb_alu_immediate_override(std::uint32_t pc, std::uint32_t original,
-                                 std::uint32_t* out_value) {
-    if (out_value && original == 12u) {
-        unsigned extra_cells = 0;
-        std::size_t trace_index = 0;
-        if (pc == kSpawnLeftBoundInitial) {
-            extra_cells = (g_extra_left + 15u) / 16u;
-            trace_index = 0;
-        } else if (pc == kSpawnLeftBoundForward) {
-            extra_cells = (g_extra_left + 15u) / 16u;
-            trace_index = 1;
-        } else if (pc == kSpawnRightBound) {
-            extra_cells = (g_extra_right + 15u) / 16u;
-            trace_index = 2;
-        } else {
-            return g_previous_thumb_alu_imm_override
-                ? g_previous_thumb_alu_imm_override(pc, original, out_value)
-                : 0;
-        }
-        // Return zero for the native-width case so the generated instruction
-        // consumes its compile-time operand exactly as before.
-        if (extra_cells != 0u) {
-            *out_value = 12u + extra_cells;
-            if (trace_enabled() && !g_spawn_bound_seen[trace_index]) {
-                g_spawn_bound_seen[trace_index] = true;
-                std::fprintf(stderr,
-                    "[mmz:extended-view] widened spawn immediate "
-                    "%08X: %u -> %u\n", pc, original, *out_value);
-            }
-            return 1;
-        }
-    }
-    return g_previous_thumb_alu_imm_override
-        ? g_previous_thumb_alu_imm_override(pc, original, out_value) : 0;
-}
-
-constexpr std::array<std::uint32_t, 12> kObjClipLiterals = {
-    0x08002264u, 0x08002360u, 0x08002460u, 0x0800257Cu,
-    0x080026FCu, 0x08002844u, 0x08002968u, 0x08002AB4u,
-    0x08002BE0u, 0x08002E28u, 0x080030F4u, 0x08003350u,
-};
-
-int rom_read32_override(std::uint32_t address, std::uint32_t original,
-                        std::uint32_t* out_value) {
-    if (out_value && original == 0x0000016Fu) {
-        for (std::size_t i = 0; i < kObjClipLiterals.size(); ++i) {
-            if (address == kObjClipLiterals[i]) {
-                // Guest compares (screen_x + 128) <= threshold.
-                *out_value = 0x0000016Fu + g_extra_right;
-                if (trace_enabled() && !g_obj_clip_literal_seen[i]) {
-                    g_obj_clip_literal_seen[i] = true;
-                    std::fprintf(stderr,
-                        "[mmz:extended-view] widened OBJ clip literal "
-                        "%08X: %u -> %u\n", address, original, *out_value);
-                }
-                return 1;
-            }
-        }
-    }
-    return g_previous_rom_override
-        ? g_previous_rom_override(address, original, out_value) : 0;
-}
-
-int extended_obj_x(int raw_x, int* out_x) {
-    // MMZ1's widened guest writers accept x in [240, view_width), while all
-    // twelve paths reject x < -128. In that otherwise-unused raw interval the
-    // 9-bit value unambiguously represents an extended positive coordinate.
-    if (out_x && raw_x >= 0x100 &&
-        raw_x < static_cast<int>(240u + g_extra_right)) {
-        *out_x = raw_x;
-        return 1;
-    }
-    return g_previous_obj_x_provider
-        ? g_previous_obj_x_provider(raw_x, out_x) : 0;
-}
-
-// True when the guest has WIN0 enabled and `screen_y` falls inside its
-// vertical band.
-//
-// MMZ draws the message box on BG0 and confines it with WIN0 (WININ selects
-// BG0 only inside the window), so WIN0's band IS the guest's own statement of
-// "these scanlines are the message window, not the HUD". The HUD anchoring
-// below republishes BG0 columns 0..23 and 224..239 into the extended margins;
-// on message rows those very columns hold the box border and its leading
-// glyphs, so anchoring them drags the start of the message into the margin.
-// Anchoring must therefore skip these rows and let the margin fall back.
-bool message_window_row(int screen_y) {
-    gba::GbaBus* bus = gbarecomp::active_bus();
-    if (!bus) return false;
-    const std::uint8_t* io = bus->io().raw();
-    auto io16 = [io](std::uint32_t off) {
-        return static_cast<std::uint16_t>(
-            io[off] | (static_cast<std::uint16_t>(io[off + 1]) << 8));
-    };
-    const std::uint16_t dispcnt = io16(0x00u);
-    if ((dispcnt & 0x2000u) == 0) return false;   // WIN0 disabled
-    const std::uint16_t win0v = io16(0x44u);
-    const int top = static_cast<int>(win0v >> 8);
-    const int bottom = static_cast<int>(win0v & 0xFFu);
-    // GBATEK: Y2 is exclusive. A wrapped/degenerate band (bottom <= top, or
-    // bottom past the screen) covers to the bottom of the display.
-    if (bottom <= top || bottom > 160) return screen_y >= top;
-    return screen_y >= top && screen_y < bottom;
-}
-
-int anchored_hud_bg_x(int bg, int output_x, int screen_y, int* out_hw_x) {
-    auto fallback = [&]() {
-        return g_previous_bg_x_provider
-            ? g_previous_bg_x_provider(bg, output_x, screen_y, out_hw_x) : 0;
-    };
-    if (!out_hw_x || (g_extra_left == 0 && g_extra_right == 0)) {
-        return fallback();
-    }
-
-    const int left = static_cast<int>(g_extra_left);
-    const int view_width = static_cast<int>(240u + g_extra_left + g_extra_right);
-
-    // The prologue illustration is a static BG1 panel underneath BG0
-    // subtitles. Extend its edge pixels into the adaptive margins without
-    // scaling the character artwork or moving the text/OBJ layers.
-    if (bg == 1) {
-        gba::GbaBus* bus = gbarecomp::active_bus();
-        if (bus) {
-            const std::uint8_t* io = bus->io().raw();
-            const std::uint16_t dispcnt = static_cast<std::uint16_t>(
-                io[0] | (static_cast<std::uint16_t>(io[1]) << 8));
-            const std::uint16_t bg1cnt = static_cast<std::uint16_t>(
-                io[0x0A] | (static_cast<std::uint16_t>(io[0x0B]) << 8));
-            if (dispcnt == 0x1300u && bg1cnt == 0x0284u) {
-                if (output_x < left) {
-                    *out_hw_x = 0;
-                    return 1;
-                }
-                if (output_x >= left + 240) {
-                    *out_hw_x = 239;
-                    return 1;
-                }
-            }
-        }
-        return fallback();
-    }
-
-    if (bg != 0 || gba::g_ws_pillarbox) return fallback();
-
-    // Both HUD anchors below are x-only rules, but the HUD they republish
-    // occupies only its own scanlines. Applying them to a message-window row
-    // republishes the box's leading/trailing tiles into the margin instead.
-    // Fail closed on those rows.
-    if (message_window_row(screen_y)) return fallback();
-
-    // 0x080BC48C authors Zero's complete BG0 cluster in columns 0..2: HP,
-    // emblem, weapon icons, and rank. Present those authentic samples at the
-    // extended content edge and suppress the old centered copy. If that side
-    // is intentionally pillarboxed, retain the native position so the PPU's
-    // final black margin cannot cover the HUD.
-    if (g_player_hud_active && g_extra_left != 0 &&
-        !gba::g_ws_pillarbox_left) {
-        constexpr int kPlayerWidth = 24;
-        if (output_x >= 0 && output_x < kPlayerWidth) {
-            *out_hw_x = output_x;
-            return 1;
-        }
-        if (output_x >= left && output_x < left + kPlayerWidth) return -1;
-    }
-
-    // 0x080BC680 authors the boss gauge in columns 28..29 (X=224..239).
-    if (g_boss_hud_active && g_extra_right != 0 &&
-        !gba::g_ws_pillarbox_right) {
-        constexpr int kBossSourceX = 224;
-        constexpr int kBossWidth = 16;
-        const int destination = view_width - kBossWidth;
-        if (output_x >= destination && output_x < view_width) {
-            *out_hw_x = kBossSourceX + output_x - destination;
-            return 1;
-        }
-        const int original = left + kBossSourceX;
-        if (output_x >= original && output_x < original + kBossWidth)
-            return -1;
-    }
-    return fallback();
-}
-
-// Publish the complete row mapping once. The scalar provider remains the
-// oracle and fallback; its only X discontinuities are the two native edges
-// and the original/relocated player and boss HUD intervals. No guest code or
-// device state advances while the PPU consumes this immutable row.
-int anchored_hud_bg_x_row(int bg, int screen_y, int out_width, int,
-                          gba::WsBgXSpan* spans, int capacity) {
-    if (!spans || capacity < 1 || out_width < 1 || g_previous_bg_x_provider ||
-        gba::g_ws_bg_x_provider != anchored_hud_bg_x) return -1;
-    const int left = static_cast<int>(g_extra_left);
-    const int view_width = static_cast<int>(240u + g_extra_left + g_extra_right);
-    std::array<int, 8> edges{0, out_width, 24, left, left + 24,
-                             left + 224, left + 240, view_width - 16};
-    for (auto& edge : edges) edge = std::clamp(edge, 0, out_width);
-    std::sort(edges.begin(), edges.end());
-    const auto last = std::unique(edges.begin(), edges.end());
-    int count = 0;
-    for (auto begin = edges.begin(); begin + 1 < last; ++begin) {
-        if (count == capacity) return -1;
-        const int first_x = *begin, end_x = *(begin + 1);
-        int source = 0;
-        const int action = anchored_hud_bg_x(bg, first_x, screen_y, &source);
-        int step = 1;
-        if (action == 1 && end_x - first_x > 1) {
-            int next_source = 0, last_source = 0;
-            if (anchored_hud_bg_x(bg, first_x + 1, screen_y, &next_source) != action ||
-                anchored_hud_bg_x(bg, end_x - 1, screen_y, &last_source) != action)
-                return -1;
-            step = next_source - source;
-            if (step < 0 || step > 1 || last_source != source + step * (end_x - first_x - 1))
-                return -1;
-        }
-        spans[count++] = {first_x, end_x, source, step, action};
-    }
-    return count;
-}
 
 bool trace_enabled() {
     static const bool enabled = std::getenv("GBARECOMP_MMZ_WS_TRACE") != nullptr;
@@ -403,85 +165,63 @@ bool peek32(const gba::GbaBus& bus, std::uint32_t addr,
 }
 
 struct AuthoredCell {
-    std::uint32_t descriptor = 0;
+    std::uint32_t room = 0;
 };
 
-bool resolve_authored_cell(const gba::GbaBus& bus, std::uint32_t fixed_x,
-                           std::uint32_t fixed_y, AuthoredCell& out) {
-    // Side-effect-free mirror of the descriptor-selection prefix at
-    // 0x08006D48..0x08006D7C and its authored-grid indexing. The guest's full
-    // resolver continues into tileset/palette side effects, so presentation
-    // safety checks must not dispatch it speculatively.
-    if (fixed_x > 0x00770FFFu || fixed_y > 0x004F5FFFu) return false;
-    std::uint8_t world_cell_x = 0;
-    std::uint8_t world_cell_y = 0;
-    if (!peek8(bus, kScreenX + (fixed_x >> 12), world_cell_x) ||
-        !peek8(bus, kScreenY + (fixed_y >> 12), world_cell_y)) return false;
-    std::uint8_t room = 0;
-    if (!peek8(bus, kRoomGrid +
-        (static_cast<std::uint32_t>(world_cell_y) << 7) + world_cell_x,
-        room)) return false;
-    const std::uint32_t family = room & 0x0Fu;
-    std::uint32_t family_table = 0;
-    std::uint32_t selectors = 0;
-    if (!peek32(bus, kDescriptorFamilies + family * 4u, family_table) ||
-        !peek32(bus, kVariantSelectors, selectors)) return false;
-    const std::uint32_t selector = (selectors >> (family * 2u)) & 3u;
-    std::uint32_t descriptor = 0;
-    if (!peek32(bus, family_table + selector * 4u, descriptor)) return false;
+// MMZ3's room grid is a byte-per-screen table. Its header is
+// [width, unused, default, height] followed by width * height room ids.
+// The dispatcher supplies the current room descriptor in R1 and the layer
+// state supplies the grid pointer at +0x14, so validation never has to guess
+// a ROM family/variant table.
+bool resolve_authored_cell(const gba::GbaBus& bus, int layer_index,
+                           std::uint32_t fixed_x, std::uint32_t fixed_y,
+                           AuthoredCell& out) {
+    if (layer_index < 0 || layer_index > 2) return false;
+    const std::uint32_t descriptor = g_descriptor[static_cast<std::size_t>(layer_index)];
+    const std::uint32_t grid = g_room_grid[static_cast<std::size_t>(layer_index)];
+    if (descriptor < 0x08000000u || grid < 0x08000000u) return false;
 
-    std::uint32_t origin_x = 0;
-    std::uint32_t origin_y = 0;
-    std::uint32_t header = 0;
-    if (!peek32(bus, descriptor + 0x6Cu, origin_x) ||
-        !peek32(bus, descriptor + 0x70u, origin_y) ||
-        !peek32(bus, descriptor + 0x74u, header)) return false;
-    const std::int64_t local_x = static_cast<std::int64_t>(fixed_x >> 8) -
-        static_cast<std::int64_t>(origin_x) * 240;
-    const std::int64_t local_y = static_cast<std::int64_t>(fixed_y >> 8) -
-        static_cast<std::int64_t>(origin_y) * 160;
-    if (local_x < 0 || local_y < 0) return false;
-    std::uint8_t cell_x = 0;
-    std::uint8_t cell_y = 0;
-    if (!peek8(bus, kScreenX + static_cast<std::uint32_t>(local_x >> 4),
-               cell_x) ||
-        !peek8(bus, kScreenY + static_cast<std::uint32_t>(local_y >> 4),
-               cell_y)) return false;
-    std::uint8_t cells_w = 0;
-    std::uint8_t cells_h = 0;
-    if (!peek8(bus, header + 2u, cells_w) ||
-        !peek8(bus, header + 3u, cells_h) ||
-        cell_x >= cells_w || cell_y >= cells_h) return false;
-    out = {descriptor};
+    std::uint32_t descriptor_room = 0;
+    std::uint8_t width = 0;
+    std::uint8_t height = 0;
+    if (!peek32(bus, descriptor, descriptor_room) ||
+        !peek8(bus, grid, width) || !peek8(bus, grid + 3u, height)) {
+        return false;
+    }
+    if (width == 0 || height == 0) return false;
+
+    const std::uint32_t screen_x = fixed_x >> 8;
+    const std::uint32_t screen_y = fixed_y >> 8;
+    if (screen_x >= width || screen_y >= height) return false;
+
+    std::uint8_t room = 0;
+    if (!peek8(bus, grid + 4u + screen_y * width + screen_x, room)) {
+        return false;
+    }
+    if (room != static_cast<std::uint8_t>(descriptor_room)) return false;
+    out = {room};
     return true;
 }
 
-constexpr std::uint32_t kAuthoredCellFixed = 16u << 8;
+constexpr std::uint32_t kAuthoredScreenFixed = 1u << 8;
 
-constexpr std::uint32_t authored_cells_crossed(std::uint32_t first,
-                                               std::uint32_t last) {
+constexpr std::uint32_t authored_screens_crossed(std::uint32_t first,
+                                                 std::uint32_t last) {
     return first <= last
-        ? last / kAuthoredCellFixed - first / kAuthoredCellFixed + 1u
+        ? last / kAuthoredScreenFixed - first / kAuthoredScreenFixed + 1u
         : 0u;
 }
 
-static_assert(authored_cells_crossed(0u, kAuthoredCellFixed - 1u) == 1u);
-static_assert(authored_cells_crossed(kAuthoredCellFixed - 1u,
-                                     kAuthoredCellFixed) == 2u);
-static_assert(authored_cells_crossed(3u * kAuthoredCellFixed + 7u,
-                                     5u * kAuthoredCellFixed + 9u) == 3u);
+static_assert(authored_screens_crossed(0u, kAuthoredScreenFixed - 1u) == 1u);
+static_assert(authored_screens_crossed(kAuthoredScreenFixed - 1u,
+                                       kAuthoredScreenFixed) == 2u);
+static_assert(authored_screens_crossed(3u * kAuthoredScreenFixed + 7u,
+                                       5u * kAuthoredScreenFixed + 9u) == 3u);
 
-// Prove that every authored cell intersected by the widened strip belongs to
-// the same room descriptor as the authentic edge at the same Y.
-// Sampling the first covered coordinate in each globally aligned 16-pixel
-// cell is sufficient because descriptor selection and authored-grid bounds
-// are constant within that cell. Collision/behavior words deliberately are
-// not compared: ramps, hazards, and platforms legitimately change those
-// words inside one room, and using them as a presentation boundary made a
-// whole side flicker to black when the viewport crossed a 16-pixel row.
-// Walking the full X/Y grid still catches internal A -> B -> A descriptor
-// transitions that an endpoint or top/middle/bottom test would miss.
-bool authored_strip_matches_edge(const gba::GbaBus& bus,
+// Every screen column and row intersected by a widened strip must still be
+// authored by the same room as the authentic edge. This prevents a room
+// transition from being papered over with the neighbouring room's tiles.
+bool authored_strip_matches_edge(const gba::GbaBus& bus, int layer_index,
                                  std::uint32_t authentic_x,
                                  std::uint32_t outer_x,
                                  std::uint32_t top_y,
@@ -491,29 +231,29 @@ bool authored_strip_matches_edge(const gba::GbaBus& bus,
         authentic_x < outer_x ? authentic_x : outer_x;
     const std::uint32_t last_x =
         authentic_x < outer_x ? outer_x : authentic_x;
-    const std::uint32_t first_x_cell = first_x / kAuthoredCellFixed;
-    const std::uint32_t last_x_cell = last_x / kAuthoredCellFixed;
-    const std::uint32_t first_y_cell = top_y / kAuthoredCellFixed;
-    const std::uint32_t last_y_cell = bottom_y / kAuthoredCellFixed;
+    const std::uint32_t first_x_screen = first_x / kAuthoredScreenFixed;
+    const std::uint32_t last_x_screen = last_x / kAuthoredScreenFixed;
+    const std::uint32_t first_y_screen = top_y / kAuthoredScreenFixed;
+    const std::uint32_t last_y_screen = bottom_y / kAuthoredScreenFixed;
 
-    for (std::uint32_t y_cell = first_y_cell;; ++y_cell) {
-        const std::uint32_t y = y_cell == first_y_cell
-            ? top_y : y_cell * kAuthoredCellFixed;
+    for (std::uint32_t y_screen = first_y_screen;; ++y_screen) {
+        const std::uint32_t y = y_screen == first_y_screen
+            ? top_y : y_screen * kAuthoredScreenFixed;
         AuthoredCell authentic{};
-        if (!resolve_authored_cell(bus, authentic_x, y, authentic))
+        if (!resolve_authored_cell(bus, layer_index, authentic_x, y, authentic))
             return false;
 
-        for (std::uint32_t x_cell = first_x_cell;; ++x_cell) {
-            const std::uint32_t x = x_cell == first_x_cell
-                ? first_x : x_cell * kAuthoredCellFixed;
+        for (std::uint32_t x_screen = first_x_screen;; ++x_screen) {
+            const std::uint32_t x = x_screen == first_x_screen
+                ? first_x : x_screen * kAuthoredScreenFixed;
             AuthoredCell candidate{};
-            if (!resolve_authored_cell(bus, x, y, candidate) ||
-                authentic.descriptor != candidate.descriptor) {
+            if (!resolve_authored_cell(bus, layer_index, x, y, candidate) ||
+                authentic.room != candidate.room) {
                 return false;
             }
-            if (x_cell == last_x_cell) break;
+            if (x_screen == last_x_screen) break;
         }
-        if (y_cell == last_y_cell) break;
+        if (y_screen == last_y_screen) break;
     }
     return true;
 }
@@ -535,10 +275,6 @@ void reset_presentation_caches() {
     for (auto& call : g_observed) call.valid = false;
     g_layout_signature_valid.fill(false);
     g_last_layer_position_valid.fill(false);
-    g_player_hud_pending = false;
-    g_boss_hud_pending = false;
-    g_player_hud_active = false;
-    g_boss_hud_active = false;
 }
 
 void write32_iwram(gba::GbaBus& bus, std::uint32_t addr, std::uint32_t value) {
@@ -669,8 +405,10 @@ bool run_guest_streamer(gba::GbaBus& bus,
     const unsigned long long saved_shadow_cycles = g_runtime_shadow_cycles;
     const unsigned long long saved_idle_epoch = g_idle_disturb_epoch;
     const unsigned saved_insn_trace = g_runtime_insn_trace;
-    const std::uint32_t previous_ptr = scratch + 0x180u;
-    const std::uint32_t current_ptr = scratch + 0x1C0u;
+    // Keep the synthetic state above the downward-growing guest stack. A full
+    // 32-word copy preserves every tileset/chunk field MMZ3 may read.
+    const std::uint32_t previous_ptr = scratch + 0x160u;
+    const std::uint32_t current_ptr = scratch + 0x1E0u;
     auto previous = call.previous;
     auto current = call.current;
     previous[0] += static_cast<std::uint32_t>(horizontal_offset);
@@ -697,6 +435,8 @@ bool run_guest_streamer(gba::GbaBus& bus,
     const std::uint32_t target_pc = full_seed
         ? (layer_index == 0 ? kBg1FullReload : kTextBgFullReload)
         : call.target_pc;
+    // Shift both the state copy and the transient position so the streamer's
+    // 16-pixel column guard sees the off-screen coordinate.
     g_cpu.R[0] = previous_ptr;
     g_cpu.R[1] = current_ptr;
     g_cpu.R[2] = call.r2;
@@ -737,6 +477,138 @@ bool run_guest_streamer(gba::GbaBus& bus,
     return safe;
 }
 
+void publish_authored_layout(gba::GbaBus& bus) {
+    const std::uint8_t* io = bus.io().raw();
+    auto io16 = [io](std::uint32_t off) {
+        return static_cast<std::uint16_t>(
+            io[off] | (static_cast<std::uint16_t>(io[off + 1]) << 8));
+    };
+    const std::uint16_t dispcnt = io16(0x00u);
+    constexpr std::uint32_t kExpectedBases[3] = {2u, 4u, 6u};
+    constexpr std::uint32_t kExpectedSizes[3] = {1u, 1u, 0u};
+    bool layout_supported = (dispcnt & 7u) == 0u;
+    for (int layer = 0; layer < 3; ++layer) {
+        const std::uint16_t bgcnt =
+            read16(bus, kBgcntShadow + 2u + layer * 2u);
+        const std::uint32_t size = (bgcnt >> 14) & 3u;
+        const std::uint32_t map_base = (bgcnt >> 8) & 31u;
+        const bool size_ok = layer == 2
+            ? (size == 0u || size == 1u)
+            : size == kExpectedSizes[layer];
+        layout_supported = layout_supported && size_ok &&
+            map_base == kExpectedBases[layer];
+    }
+    if (!layout_supported) invalidate_all_layers();
+
+    // Only BG1 and BG2 are streamed through the hooked dispatcher. BG3's
+    // separate DMA path is deliberately not synthesized; its margin tiles come
+    // back transparent, which is preferable to the rejected wrapped seam.
+    const bool authored_ready = layout_supported && (g_seen_layers & 0x3u) != 0;
+    gba::g_ws_authored_margin_layers = authored_ready ? 1 : 0;
+    gba::g_ws_pillarbox = authored_ready ? 0 : 1;
+    gba::g_ws_pillarbox_left = 0;
+    gba::g_ws_pillarbox_right = 0;
+
+    if (authored_ready && g_last_layer_position_valid[0]) {
+        const std::int64_t raw_x = g_last_layer_position[0][0];
+        const std::int64_t raw_y = g_last_layer_position[0][1];
+        if (raw_x >= 0 && raw_y >= 0) {
+            const std::uint32_t world_left = static_cast<std::uint32_t>(raw_x);
+            const std::uint32_t world_top = static_cast<std::uint32_t>(raw_y);
+            const std::uint32_t world_bottom = world_top + 159u;
+            if (g_extra_left != 0u) {
+                const bool safe = world_left >= g_extra_left &&
+                    authored_strip_matches_edge(bus, 0, world_left,
+                        world_left - g_extra_left, world_top, world_bottom);
+                gba::g_ws_pillarbox_left = safe ? 0 : 1;
+            }
+            if (g_extra_right != 0u) {
+                const std::uint32_t authentic_right = world_left + 239u;
+                const bool safe = authored_strip_matches_edge(bus, 0,
+                    authentic_right, authentic_right + g_extra_right,
+                    world_top, world_bottom);
+                gba::g_ws_pillarbox_right = safe ? 0 : 1;
+            }
+        }
+    }
+
+    if (trace_enabled() &&
+        (g_last_pillarbox != gba::g_ws_pillarbox ||
+         g_last_pillarbox_left != gba::g_ws_pillarbox_left ||
+         g_last_pillarbox_right != gba::g_ws_pillarbox_right)) {
+        std::fprintf(stderr,
+            "[mmz3:extended-view] margins global/left/right=%d/%d/%d "
+            "layer_x=%d grid=%08X dispcnt=%04X seen=%u\n",
+            gba::g_ws_pillarbox, gba::g_ws_pillarbox_left,
+            gba::g_ws_pillarbox_right, g_bg1_camera_x, g_bg1_data,
+            dispcnt, g_seen_layers);
+        g_last_pillarbox = gba::g_ws_pillarbox;
+        g_last_pillarbox_left = gba::g_ws_pillarbox_left;
+        g_last_pillarbox_right = gba::g_ws_pillarbox_right;
+    }
+    g_layers_updated_since_publish = 0;
+}
+
+void synthesize_layer(gba::GbaBus& bus, int layer_index) {
+    StreamCall& call = g_observed[static_cast<std::size_t>(layer_index)];
+    if (!call.valid) return;
+    const std::uint32_t expected_state = layer_index == 0 ? kBg1State :
+        layer_index == 1 ? kBg2State : kBg3State;
+    if (call.state != expected_state) {
+        call.valid = false;
+        return;
+    }
+
+    const std::array<std::uint32_t, 3> signature = {
+        call.previous[3], call.previous[4], call.previous[5]};
+    if (!g_layout_signature_valid[layer_index] ||
+        g_layout_signatures[layer_index] != signature) {
+        invalidate_layer(layer_index);
+        g_layout_signatures[layer_index] = signature;
+        g_layout_signature_valid[layer_index] = true;
+        if (trace_enabled()) {
+            std::fprintf(stderr,
+                "[mmz3:extended-view] layer=%d tiles=%08X pal=%08X grid=%08X "
+                "camera=%d,%d\n",
+                layer_index + 1, signature[0], signature[1], signature[2],
+                static_cast<std::int32_t>(call.current[0]),
+                static_cast<std::int32_t>(call.current[1]));
+        }
+    }
+
+    const std::array<std::int32_t, 2> position = {
+        static_cast<std::int32_t>(call.current[0]),
+        static_cast<std::int32_t>(call.current[1])};
+    if (g_last_layer_position_valid[layer_index]) {
+        const auto& last = g_last_layer_position[layer_index];
+        const std::int64_t dx = static_cast<std::int64_t>(position[0]) - last[0];
+        const std::int64_t dy = static_cast<std::int64_t>(position[1]) - last[1];
+        if (dx < -64 || dx > 64 || dy < -64 || dy > 64)
+            invalidate_layer(layer_index);
+    }
+    g_last_layer_position[layer_index] = position;
+    g_last_layer_position_valid[layer_index] = true;
+
+    g_in_synthetic_stream = true;
+    const bool left_ok = run_guest_streamer(bus, call,
+        -static_cast<int>(g_extra_left), layer_index, 0);
+    const bool right_ok = run_guest_streamer(bus, call,
+        static_cast<int>(g_extra_right), layer_index, 1);
+    g_in_synthetic_stream = false;
+    if (left_ok && right_ok) {
+        g_seen_layers |= 1u << static_cast<unsigned>(layer_index);
+        g_layers_updated_since_publish |=
+            1u << static_cast<unsigned>(layer_index);
+        if (layer_index == 0) {
+            g_bg1_data = call.previous[5];
+            g_bg1_camera_x = position[0];
+        }
+    } else {
+        invalidate_layer(layer_index);
+    }
+    call.valid = false;
+}
+
 void extended_view_hook(std::uint32_t pc) {
     if (g_in_synthetic_stream) {
         return;
@@ -756,7 +628,7 @@ void extended_view_hook(std::uint32_t pc) {
             g_last_pillarbox_right = -1;
         if (trace_enabled()) {
             std::fprintf(stderr,
-                "[mmz:extended-view] live geometry changed: margins=%u/%u "
+                "[mmz3:extended-view] live geometry changed: margins=%u/%u "
                 "logical=%ux160\n",
                 g_extra_left, g_extra_right,
                 240u + g_extra_left + g_extra_right);
@@ -769,161 +641,33 @@ void extended_view_hook(std::uint32_t pc) {
         g_seen_state_epoch = g_runtime_state_epoch;
         reset_presentation_caches();
     }
-    if (pc == kPlayerHudDraw && g_cpu.R[0] == kHudState) {
-        g_player_hud_pending = read32(*bus, kHudState + 4u) != 0;
-    } else if (pc == kBossHudDraw && g_cpu.R[0] == kHudState) {
-        g_boss_hud_pending = read32(*bus, kHudState + 8u) != 0;
-    }
-    if (pc == kPpuPublish) {
-        // These exact guest routines are reached only when DrawStatus authors
-        // the corresponding BG0 tiles. Latch that LLE fact for the published
-        // frame; stale menu/text maps never opt into HUD anchoring.
-        g_player_hud_active = g_player_hud_pending;
-        g_boss_hud_active = g_boss_hud_pending;
-        g_player_hud_pending = false;
-        g_boss_hud_pending = false;
-        const std::uint8_t* io = bus->io().raw();
-        auto io16 = [io](std::uint32_t off) {
-            return static_cast<std::uint16_t>(
-                io[off] | (static_cast<std::uint16_t>(io[off + 1]) << 8));
-        };
-        const std::uint16_t dispcnt = io16(0x00u);
-        const bool mode0 = (dispcnt & 7u) == 0;
-        bool layout_supported = mode0;
-        constexpr std::uint32_t expected_bases[3] = {2u, 4u, 6u};
-        for (int layer = 0; layer < 3; ++layer) {
-            const std::uint16_t bgcnt = read16(*bus, kBgcntShadow + layer * 2u);
-            layout_supported = layout_supported &&
-                ((bgcnt >> 14) & 3u) == 1u &&
-                ((bgcnt >> 8) & 31u) == expected_bases[layer];
-        }
-        // The guest only streams a strip when a layer moves. Captured margin
-        // maps remain valid until the existing transition/layout/teleport
-        // invalidation paths clear them, so a still camera must stay wide.
-        const bool layout_ok = layout_supported && g_seen_layers == 0x7u;
-        gba::g_ws_authored_margin_layers = layout_ok ? 1 : 0;
-        gba::g_ws_pillarbox = layout_ok ? 0 : 1;
-        gba::g_ws_pillarbox_left = 0;
-        gba::g_ws_pillarbox_right = 0;
-        const bool illustrated_prologue =
-            dispcnt == 0x1300u && io16(0x0Au) == 0x0284u;
-        if (illustrated_prologue) gba::g_ws_pillarbox = 0;
-        if (layout_ok) {
-            // MMZ's ChunkMap header is stride, default chunk, authored width,
-            // authored height. The streamer uses stride for row addressing;
-            // only authored width (+2) is a presentation boundary.
-            std::uint8_t screens_w = 0;
-            if (!peek8(*bus, g_bg1_data + 2u, screens_w) || screens_w == 0) {
-                gba::g_ws_pillarbox = 1;
-            } else {
-                const std::int64_t max_x =
-                    static_cast<std::int64_t>(screens_w) * 240;
-                const std::int64_t camera_x = g_bg1_camera_x;
-                gba::g_ws_pillarbox_left =
-                    camera_x - static_cast<std::int64_t>(g_extra_left) < 0;
-                gba::g_ws_pillarbox_right =
-                    camera_x + 239 + static_cast<std::int64_t>(g_extra_right) >=
-                    max_x;
 
-                std::uint32_t viewport_x = 0;
-                std::uint32_t viewport_y = 0;
-                if (!peek32(*bus, kCamera + 0x38u, viewport_x) ||
-                    !peek32(*bus, kCamera + 0x3Cu, viewport_y) ||
-                    viewport_x < (120u << 8) ||
-                    viewport_y < (80u << 8)) {
-                    gba::g_ws_pillarbox = 1;
-                } else {
-                    // Camera viewport coordinates are world 24.8 fixed point;
-                    // layer streamer coordinates above are descriptor-local.
-                    const std::uint32_t world_left = viewport_x - (120u << 8);
-                    const std::uint32_t world_top =
-                        viewport_y - (80u << 8);
-                    const std::uint32_t world_bottom =
-                        viewport_y + (79u << 8);
-                    if (g_extra_left != 0) {
-                        const std::uint32_t delta = g_extra_left << 8;
-                        const bool safe_left = world_left >= delta &&
-                            authored_strip_matches_edge(
-                                *bus, world_left, world_left - delta,
-                                world_top, world_bottom);
-                        gba::g_ws_pillarbox_left |= !safe_left;
-                    }
-                    if (g_extra_right != 0) {
-                        const std::uint32_t authentic_right =
-                            world_left + (239u << 8);
-                        const bool safe_right = authored_strip_matches_edge(
-                            *bus, authentic_right,
-                            authentic_right + (g_extra_right << 8),
-                            world_top, world_bottom);
-                        gba::g_ws_pillarbox_right |= !safe_right;
-                    }
-
-                    const std::uint8_t camera_mode =
-                        bus->ewram_ptr()[(kCamera - 0x02000000u) + 0x18u];
-                    if (camera_mode == 4u || camera_mode == 5u) {
-                        std::uint32_t left_bound = 0;
-                        std::uint32_t right_bound = 0;
-                        if (!peek32(*bus, kCamera + 0x5Cu, left_bound) ||
-                            !peek32(*bus, kCamera + 0x60u, right_bound)) {
-                            gba::g_ws_pillarbox = 1;
-                        } else {
-                            const std::int64_t outer_left =
-                                static_cast<std::int64_t>(viewport_x) -
-                                (static_cast<std::int64_t>(120u + g_extra_left)
-                                 << 8);
-                            const std::int64_t outer_right =
-                                static_cast<std::int64_t>(viewport_x) +
-                                (static_cast<std::int64_t>(119u + g_extra_right)
-                                 << 8);
-                            gba::g_ws_pillarbox_left |=
-                                outer_left < static_cast<std::int64_t>(left_bound);
-                            gba::g_ws_pillarbox_right |=
-                                outer_right >= static_cast<std::int64_t>(right_bound);
-                        }
-                    }
-                }
-
+    if (pc == kLayerDispatcher) {
+        const std::uint32_t base = g_cpu.R[0];
+        if (base >= kLayerBase &&
+            (base - kLayerBase) % kLayerStride == 0u) {
+            const std::uint32_t index =
+                (base - kLayerBase) / kLayerStride;
+            if (index < 3u) {
+                g_descriptor[index] = g_cpu.R[1];
             }
-        } else if (!layout_supported) {
-            invalidate_all_layers();
         }
-        if (trace_enabled() &&
-            (g_last_pillarbox != gba::g_ws_pillarbox ||
-             g_last_pillarbox_left != gba::g_ws_pillarbox_left ||
-             g_last_pillarbox_right != gba::g_ws_pillarbox_right)) {
-            std::fprintf(stderr,
-                "[mmz:extended-view] margins global/left/right=%d/%d/%d "
-                "layer_x=%d map=%08X viewport=%08X,%08X "
-                "dispcnt=%04X win0=%04X/%04X winin/out=%04X/%04X\n",
-                gba::g_ws_pillarbox, gba::g_ws_pillarbox_left,
-                gba::g_ws_pillarbox_right, g_bg1_camera_x, g_bg1_data,
-                read32(*bus, kCamera + 0x38u),
-                read32(*bus, kCamera + 0x3Cu), dispcnt,
-                io16(0x40u), io16(0x44u), io16(0x48u), io16(0x4Au));
-            g_last_pillarbox = gba::g_ws_pillarbox;
-            g_last_pillarbox_left = gba::g_ws_pillarbox_left;
-            g_last_pillarbox_right = gba::g_ws_pillarbox_right;
-        }
-        g_layers_updated_since_publish = 0;
         return;
     }
+
     if (pc == kBg1Streamer || pc == kBg1FullReload ||
         pc == kTextBgStreamer || pc == kTextBgFullReload) {
         const std::uint32_t vram_base = g_cpu.R[2];
         int layer_index = -1;
         if ((pc == kBg1Streamer || pc == kBg1FullReload) &&
-            g_cpu.R[0] == kBg1State &&
-            vram_base == kBg1Map) {
+            g_cpu.R[0] == kBg1State && vram_base == kBg1Map) {
             layer_index = 0;
         } else if (pc == kTextBgStreamer || pc == kTextBgFullReload) {
             layer_index = vram_base == kBg2Vram ? 1 :
                           vram_base == kBg3Vram ? 2 : -1;
         }
-        if (layer_index > 0 &&
-            g_cpu.R[0] != (layer_index == 1 ? kBg2State : kBg3State)) {
-            return;
-        }
-        if (layer_index < 0) return;
+        if (layer_index < 0 || layer_index > 1) return;
+        if (layer_index == 1 && g_cpu.R[0] != kBg2State) return;
         if (pc == kBg1FullReload || pc == kTextBgFullReload)
             invalidate_layer(layer_index);
         StreamCall& call = g_observed[static_cast<std::size_t>(layer_index)];
@@ -941,77 +685,27 @@ void extended_view_hook(std::uint32_t pc) {
             call.current[i] = read32(*bus, g_cpu.R[1] +
                 static_cast<std::uint32_t>(i * 4u));
         }
-        return;
-    }
-    if (pc != kScrollPublish) return;
-
-    const std::uint32_t state = g_cpu.R[0];
-    int layer_index = -1;
-    std::uint32_t vram_base = 0;
-    if (state == kBg1State) {
-        layer_index = 0;
-    } else if (state == kBg2State) {
-        layer_index = 1;
-        vram_base = kBg2Vram;
-    } else if (state == kBg3State) {
-        layer_index = 2;
-        vram_base = kBg3Vram;
-    } else return;
-
-    StreamCall& call = g_observed[static_cast<std::size_t>(layer_index)];
-    if (!call.valid || call.state != state ||
-        (layer_index != 0 && call.vram_base != vram_base)) {
+        g_room_grid[static_cast<std::size_t>(layer_index)] =
+            call.previous[5];
         return;
     }
 
-    const std::array<std::uint32_t, 3> signature = {
-        call.previous[3], call.previous[4], call.previous[5]};
-    if (!g_layout_signature_valid[layer_index] ||
-        g_layout_signatures[layer_index] != signature) {
-        invalidate_layer(layer_index);
-        g_layout_signatures[layer_index] = signature;
-        g_layout_signature_valid[layer_index] = true;
-        if (trace_enabled()) {
-            std::fprintf(stderr,
-                "[mmz:extended-view] layer=%d tiles=%08X chunks=%08X "
-                "map=%08X camera=%d,%d\n",
-                layer_index + 1, signature[0], signature[1], signature[2],
-                static_cast<std::int32_t>(call.current[0]),
-                static_cast<std::int32_t>(call.current[1]));
+    if (pc == kLayerPublish) {
+        const std::uint32_t shadow = g_cpu.R[1];
+        if (shadow >= kScrollShadow &&
+            (shadow - kScrollShadow) % 4u == 0u) {
+            const std::uint32_t layer_index = (shadow - kScrollShadow) / 4u;
+            if (layer_index < 2u) {
+                synthesize_layer(*bus, static_cast<int>(layer_index));
+            }
         }
+        publish_authored_layout(*bus);
+        return;
     }
 
-    const std::array<std::int32_t, 2> position = {
-        static_cast<std::int32_t>(call.current[0]),
-        static_cast<std::int32_t>(call.current[1])};
-    if (g_last_layer_position_valid[layer_index]) {
-        const auto& last = g_last_layer_position[layer_index];
-        const std::int64_t dx = static_cast<std::int64_t>(position[0]) - last[0];
-        const std::int64_t dy = static_cast<std::int64_t>(position[1]) - last[1];
-        if (dx < -30 || dx > 30 || dy < -30 || dy > 30)
-            invalidate_layer(layer_index);
+    if (pc == kFramePublish || pc == kScrollPublish) {
+        publish_authored_layout(*bus);
     }
-    g_last_layer_position[layer_index] = position;
-    g_last_layer_position_valid[layer_index] = true;
-
-    g_in_synthetic_stream = true;
-    const bool left_ok = run_guest_streamer(*bus, call,
-        -static_cast<int>(g_extra_left), layer_index, 0);
-    const bool right_ok = run_guest_streamer(*bus, call,
-        static_cast<int>(g_extra_right), layer_index, 1);
-    g_in_synthetic_stream = false;
-    if (left_ok && right_ok) {
-        g_seen_layers |= 1u << static_cast<unsigned>(layer_index);
-        g_layers_updated_since_publish |=
-            1u << static_cast<unsigned>(layer_index);
-        if (layer_index == 0) {
-            g_bg1_data = call.previous[5];
-            g_bg1_camera_x = static_cast<std::int32_t>(call.current[0]);
-        }
-    } else {
-        invalidate_layer(layer_index);
-    }
-    call.valid = false;
 }
 
 int margin_tilemap_provider(int bg, int hw_x, int screen_y,
@@ -1049,22 +743,12 @@ int margin_tilemap_provider(int bg, int hw_x, int screen_y,
                                    [static_cast<std::size_t>(side_index)];
     *out_entry = static_cast<std::uint16_t>(
         map[map_off] | (static_cast<std::uint16_t>(map[map_off + 1]) << 8));
-    return 1;
+    return gba::kWsTilemapReplace;
 }
 
 }  // namespace
 
 void install_extended_view(unsigned extra_left, unsigned extra_right) {
-#if defined(MMZ_GENERIC_WIDE_VIEW)
-    g_extra_left = extra_left;
-    g_extra_right = extra_right;
-    gba::g_ws_tilemap_provider = generic_tilemap_provider;
-    gba::g_ws_authored_margin_layers = 1;
-    gba::g_ws_pillarbox = 0;
-    gba::g_ws_pillarbox_left = 0;
-    gba::g_ws_pillarbox_right = 0;
-    return;
-#else
     // A reinstall may change the hidden previous-provider delegate while the
     // public pointer is unchanged. Revoke the old promise before rebuilding it.
     gba::clear_read_only_wide_bg_providers();
@@ -1073,45 +757,16 @@ void install_extended_view(unsigned extra_left, unsigned extra_right) {
     g_seen_state_epoch = g_runtime_state_epoch;
     reset_presentation_caches();
     g_last_pillarbox = g_last_pillarbox_left = g_last_pillarbox_right = -1;
-    g_spawn_bound_seen.fill(false);
+    // MMZ3 has no verified HUD/OBJ/spawn remaps yet. Keep their native
+    // placement and contribute only the authored BG1/BG2 margin maps.
+    gba::g_ws_authored_margin_layers = 0;
     gba::g_ws_pillarbox = 1;
     gba::g_ws_pillarbox_left = 0;
     gba::g_ws_pillarbox_right = 0;
     gba::g_ws_tilemap_provider = margin_tilemap_provider;
-    if (gba::g_rom_read32_override != rom_read32_override) {
-        g_previous_rom_override = gba::g_rom_read32_override;
-        gba::g_rom_read32_override = rom_read32_override;
-    }
-    if (gba::g_ws_obj_x_provider != extended_obj_x) {
-        g_previous_obj_x_provider = gba::g_ws_obj_x_provider;
-        gba::g_ws_obj_x_provider = extended_obj_x;
-    }
-    if (gba::g_ws_bg_x_provider != anchored_hud_bg_x) {
-        g_previous_bg_x_provider = gba::g_ws_bg_x_provider;
-        gba::g_ws_bg_x_provider = anchored_hud_bg_x;
-        // This provider remaps BG0 HUD and the BG1 prologue panel only.
-        // With no chained provider, leave world layers eligible for native
-        // tile rows instead of invoking a known no-op for every pixel.
-        if (!g_previous_bg_x_provider) gba::g_ws_bg_x_provider_layers = 0x3u;
-        else gba::g_ws_bg_x_provider_layers |= 0x3u;
-    }
-    if (!g_previous_bg_x_provider && !gba::g_ws_bg_xy_provider &&
-        gba::g_ws_tilemap_provider == margin_tilemap_provider &&
-        gba::g_ws_bg_x_provider == anchored_hud_bg_x) {
-        // Both callbacks only read the published HUD/maps and current IO.
-        // margin_tilemap_provider selects one entry per scrolled 8x8 cell.
-        gba::publish_read_only_wide_bg_providers(anchored_hud_bg_x_row, true);
-    }
-    if ((extra_left != 0u || extra_right != 0u) &&
-        g_runtime_thumb_alu_imm_override != thumb_alu_immediate_override) {
-        g_previous_thumb_alu_imm_override =
-            g_runtime_thumb_alu_imm_override;
-        g_runtime_thumb_alu_imm_override = thumb_alu_immediate_override;
-    }
     if (g_runtime_fn_entry_hook == extended_view_hook) return;
     g_previous_hook = g_runtime_fn_entry_hook;
     g_runtime_fn_entry_hook = extended_view_hook;
-#endif
 }
 
 }  // namespace mmz
