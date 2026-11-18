@@ -166,6 +166,8 @@ Each game uses a discovery-based approach for static recompilation:
 - **SDL2** — Simple DirectMedia Layer (zlib license).
 - **AI-assisted development** — Brought-up, configured, and extended with the help of OpenCode (Beam AI assistant).
 
+Hola Soy Andrew (el que hizo este recomp a base de IA) actualmente me encuentro en la encrucijada de volver alguno de los Zero en un coop pero como es obvio no cuento con los recursos para esto(use OpenCode para este recomp) por lo que me encantaria la asistencia de alguien que sepa del tema.
+
 ## 📄 License
 
 This project is for educational/research purposes. Mega Man Zero is a trademark of Capcom. ROMs and BIOS are not included and must be obtained legally. Code in `gbarecomp` and `recomp-ui` is subject to their respective licenses.
