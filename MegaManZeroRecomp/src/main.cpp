@@ -63,6 +63,11 @@ int main(int argc, char** argv) {
     // control for the same capability. The fixed-width aspect vocabulary below
     // remains a separate axis and stays on Display.
     opts.launcher_expose_adaptive_view = false;
+    // The fixed-aspect cycle is a separate axis from the mod-owned adaptive
+    // view. Leaving the legacy widescreen toggle exposed makes the launcher
+    // emit --no-resize-view, which suppresses mod ownership and pins the
+    // renderer to 240x160 even when the adaptive-view feature is enabled.
+    opts.launcher_expose_widescreen = false;
     opts.extended_view_init = mmz::install_extended_view;
     opts.launcher_region = "USA";
     opts.launcher_game_config = "game.toml";   // prefill ROM/BIOS from [rom]/[bios]

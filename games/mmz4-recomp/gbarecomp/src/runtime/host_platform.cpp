@@ -106,13 +106,14 @@ void FramePacer::wait_for_next_frame(uint64_t frames) {
         std::this_thread::yield();
     }
 
-    // Never pay back a late wake with a shortened following frame. That
-    // short/long pair is especially visible during steady pixel scrolling.
-    // Normal sub-millisecond timer error retains the absolute cadence; a
-    // scheduler or present stall above 1.5 ms establishes a fresh full-frame
-    // period instead of producing a visibly short recovery frame.
+    // Keep the absolute cadence through small timer/scheduler jitter. A wake
+    // more than a few milliseconds late previously reset the next deadline to
+    // woke+period, permanently banking the overshoot; a couple of ms of
+    // Windows timer latency every frame turned a 59.7 Hz session into ~53 Hz.
+    // A tolerance of 5 ms absorbs ordinary jitter while still establishing a
+    // fresh period after a genuine stall.
     const clock::time_point woke = clock::now();
-    constexpr auto kLateTolerance = std::chrono::microseconds(1500);
+    constexpr auto kLateTolerance = std::chrono::microseconds(5000);
     next_ = woke > next_ + kLateTolerance ? woke + period_
                                           : next_ + period_;
 }

@@ -19,6 +19,16 @@ extern "C" unsigned g_ws_extra_right;
 namespace mmz {
 namespace {
 
+#if defined(MMZ_GENERIC_WIDE_VIEW)
+// MMZ2-MMZ4 do not share MMZ1's ROM/EWRAM hook addresses, so the authored
+// strip streamer below cannot fire for them. The engine's wrapped-tilemap
+// continuation paints authored background data into the expanded margins
+// instead of leaving black bars.
+int generic_tilemap_provider(int, int, int, std::uint16_t*) {
+    return gba::kWsTilemapKeepWrapped;
+}
+#endif
+
 constexpr std::uint32_t kScrollPublish = 0x0800527Cu;
 constexpr std::uint32_t kPpuPublish = 0x08001B68u;
 constexpr std::uint32_t kTextBgStreamer = 0x08003560u;
@@ -1045,6 +1055,16 @@ int margin_tilemap_provider(int bg, int hw_x, int screen_y,
 }  // namespace
 
 void install_extended_view(unsigned extra_left, unsigned extra_right) {
+#if defined(MMZ_GENERIC_WIDE_VIEW)
+    g_extra_left = extra_left;
+    g_extra_right = extra_right;
+    gba::g_ws_tilemap_provider = generic_tilemap_provider;
+    gba::g_ws_authored_margin_layers = 1;
+    gba::g_ws_pillarbox = 0;
+    gba::g_ws_pillarbox_left = 0;
+    gba::g_ws_pillarbox_right = 0;
+    return;
+#else
     // A reinstall may change the hidden previous-provider delegate while the
     // public pointer is unchanged. Revoke the old promise before rebuilding it.
     gba::clear_read_only_wide_bg_providers();
@@ -1091,6 +1111,7 @@ void install_extended_view(unsigned extra_left, unsigned extra_right) {
     if (g_runtime_fn_entry_hook == extended_view_hook) return;
     g_previous_hook = g_runtime_fn_entry_hook;
     g_runtime_fn_entry_hook = extended_view_hook;
+#endif
 }
 
 }  // namespace mmz

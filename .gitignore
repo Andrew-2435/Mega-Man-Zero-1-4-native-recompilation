@@ -25,6 +25,10 @@ saves/
 discovery_sessions/
 *.toml.frag
 
+# Runtime-generated recompiler caches and coverage reports
+recomp_cache/
+recomp_coverage_*.json
+
 # Generated code
 generated/
 
